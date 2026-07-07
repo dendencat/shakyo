@@ -1,0 +1,94 @@
+:root {
+  --text: #3a3644;
+  --text-sub: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --bg-sub: #f7f6f9;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #6b3bff;
+  --accent-bg: rgba(107, 59, 255, 0.08);
+  --accent-border: rgba(107, 59, 255, 0.5);
+  --danger: #c0392b;
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  --sans: system-ui, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text-h);
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 12px;
+}
+
+button:hover {
+  border-color: var(--accent-border);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover {
+  opacity: 0.9;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  padding: 0;
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--bg);
+}
+
+input:focus,
+select:focus {
+  outline: 2px solid var(--accent-bg);
+  border-color: var(--accent-border);
+}

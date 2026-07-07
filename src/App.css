@@ -1,0 +1,308 @@
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 18px;
+}
+
+.app-header .subtitle {
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.settings-button {
+  margin-left: auto;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- 分割ビュー --- */
+
+.split-pane {
+  display: flex;
+  height: 100%;
+}
+
+.split-pane-left {
+  flex-shrink: 0;
+  min-width: 0;
+  height: 100%;
+}
+
+.split-pane-right {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.split-pane-divider {
+  width: 5px;
+  cursor: col-resize;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.split-pane-divider:hover {
+  background: var(--accent-border);
+}
+
+.right-stack {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* --- ペイン共通 --- */
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.editor-pane {
+  flex: 1;
+  min-height: 0;
+}
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sub);
+  flex-shrink: 0;
+}
+
+.pane-header h2 {
+  font-size: 14px;
+}
+
+.pane-header .toolbar {
+  margin-left: auto;
+}
+
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pane-body > .toolbar {
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+.file-name {
+  color: var(--text-sub);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-bar button {
+  border: none;
+  background: none;
+  padding: 2px 10px;
+  border-radius: 6px;
+  color: var(--text-sub);
+}
+
+.tab-bar button.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.placeholder {
+  color: var(--text-sub);
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.error-text {
+  color: var(--danger);
+  padding: 8px 12px;
+  margin: 0;
+}
+
+.hint {
+  color: var(--text-sub);
+  font-size: 12px;
+  padding: 4px 12px;
+  margin: 0;
+}
+
+.badge {
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 10px;
+  padding: 1px 10px;
+}
+
+/* --- お手本ビューア --- */
+
+.reference-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.reference-code .cm-editor {
+  background: var(--code-bg);
+}
+
+.url-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.web-frame {
+  flex: 1;
+  border: none;
+  width: 100%;
+  background: #fff;
+}
+
+.pdf-viewer {
+  padding: 12px;
+}
+
+.pdf-page {
+  display: block;
+  margin: 0 auto 12px;
+  box-shadow: var(--shadow);
+  max-width: 100%;
+}
+
+/* --- 写経エディタ --- */
+
+.editor-body {
+  overflow: auto;
+}
+
+.shakyo-code {
+  height: 100%;
+}
+
+.shakyo-code .cm-editor {
+  height: 100%;
+  font-size: 14px;
+}
+
+.reference-code .cm-editor .cm-content,
+.shakyo-code .cm-editor .cm-content {
+  font-family: var(--mono);
+}
+
+/* --- 解説パネル --- */
+
+.explain-panel {
+  border-top: 1px solid var(--border);
+  height: 32%;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.explain-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.explain-text {
+  font-family: var(--sans);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 12px 16px;
+}
+
+.explain-text .cursor {
+  color: var(--accent);
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* --- 設定ダイアログ --- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 6, 13, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.modal {
+  background: var(--bg);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 20px 24px;
+  width: min(440px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal h2 {
+  font-size: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-h);
+}
+
+.modal .hint {
+  padding: 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
