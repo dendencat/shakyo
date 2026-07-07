@@ -61,3 +61,7 @@ CodeMirror 6。言語選択(または拡張子から自動判定)でハイライ
 - Tauri化(内蔵webviewでWeb参照の制約を解消)
 - リアルタイム正誤判定・WPM/正確率統計・進捗の永続化
 - 組み込みサンプルコード集
+
+## MVP後の改善
+
+- 解説パネルをMarkdownリッチ表示に対応(react-markdown + remark-gfm、2026-07-08)

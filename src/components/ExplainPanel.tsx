@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { streamExplanation } from '../lib/openai'
 import { loadSettings } from '../lib/settings'
 
@@ -86,10 +88,10 @@ export function ExplainPanel({
           </p>
         )}
         {(text || running) && (
-          <pre className="explain-text">
-            {text}
+          <div className="explain-markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
             {running && <span className="cursor">▌</span>}
-          </pre>
+          </div>
         )}
       </div>
     </section>
