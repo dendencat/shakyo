@@ -226,6 +226,27 @@
   font-family: var(--mono);
 }
 
+.shakyo-code .cm-editor .cm-shakyo-mismatch {
+  background: var(--danger-bg);
+  border-bottom: 2px solid var(--danger);
+}
+
+.shakyo-code .cm-editor .cm-shakyo-extra,
+.shakyo-code .cm-editor .cm-shakyo-extra-line {
+  background: var(--warn-bg);
+}
+
+.check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.check-label:has(input:disabled) {
+  color: var(--text-sub);
+  cursor: not-allowed;
+}
+
 /* --- 解説パネル --- */
 
 .explain-panel {

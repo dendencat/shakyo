@@ -10,6 +10,8 @@
   --accent-bg: rgba(107, 59, 255, 0.08);
   --accent-border: rgba(107, 59, 255, 0.5);
   --danger: #c0392b;
+  --danger-bg: rgba(192, 57, 43, 0.15);
+  --warn-bg: rgba(180, 83, 9, 0.15);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import type { ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { LANGUAGE_OPTIONS, languageExtension } from '../lib/langs'
 import type { LangId } from '../lib/langs'
 import { KEY_DRAFT, KEY_EDITOR_LANG } from '../lib/settings'
+import { diffHighlight, setDiffTarget } from '../lib/diffHighlight'
 
 function initialLang(): LangId {
   const saved = localStorage.getItem(KEY_EDITOR_LANG)
@@ -13,16 +14,27 @@ function initialLang(): LangId {
 
 export function ShakyoEditor({
   editorRef,
+  referenceText,
 }: {
   editorRef: React.RefObject<ReactCodeMirrorRef | null>
+  referenceText: string | null
 }) {
   const [code, setCode] = useState(() => localStorage.getItem(KEY_DRAFT) ?? '')
   const [lang, setLang] = useState<LangId>(initialLang)
+  const [checkEnabled, setCheckEnabled] = useState(false)
   const saveTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     localStorage.setItem(KEY_EDITOR_LANG, lang)
   }, [lang])
+
+  const extensions = useMemo(() => [...languageExtension(lang), diffHighlight], [lang])
+
+  const effectiveReference = checkEnabled && referenceText != null ? referenceText : null
+  useEffect(() => {
+    const view = editorRef.current?.view
+    if (view) view.dispatch({ effects: setDiffTarget.of(effectiveReference) })
+  }, [effectiveReference, editorRef])
 
   const onChange = (value: string) => {
     setCode(value)
@@ -51,6 +63,18 @@ export function ShakyoEditor({
               ))}
             </select>
           </label>
+          <label
+            className="check-label"
+            title={referenceText == null ? 'お手本のテキストファイルを開くと使えます' : undefined}
+          >
+            <input
+              type="checkbox"
+              checked={checkEnabled}
+              disabled={referenceText == null}
+              onChange={(e) => setCheckEnabled(e.target.checked)}
+            />
+            正誤判定
+          </label>
           <button onClick={clear}>クリア</button>
         </div>
       </div>
@@ -59,7 +83,7 @@ export function ShakyoEditor({
           ref={editorRef}
           value={code}
           onChange={onChange}
-          extensions={languageExtension(lang)}
+          extensions={extensions}
           basicSetup={{ lineNumbers: true, foldGutter: false }}
           placeholder="ここにお手本のコードを書き写していきます…"
           className="shakyo-code"
