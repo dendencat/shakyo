@@ -10,7 +10,7 @@ import './App.css'
 export default function App() {
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [referenceText, setReferenceText] = useState<string | null>(null)
+  const [reference, setReference] = useState<{ name: string; text: string } | null>(null)
 
   const getCode = useCallback(() => {
     const view = editorRef.current?.view
@@ -34,12 +34,18 @@ export default function App() {
       <main className="app-main">
         <SplitPane
           storageKey="shakyo.split.main"
-          left={<ReferencePane onReferenceTextChange={setReferenceText} />}
+          left={<ReferencePane onReferenceChange={setReference} />}
           right={
             <SplitPane
               direction="vertical"
               storageKey="shakyo.split.right"
-              left={<ShakyoEditor editorRef={editorRef} referenceText={referenceText} />}
+              left={
+                <ShakyoEditor
+                  editorRef={editorRef}
+                  referenceText={reference?.text ?? null}
+                  referenceName={reference?.name ?? null}
+                />
+              }
               right={<ExplainPanel getCode={getCode} onOpenSettings={() => setSettingsOpen(true)} />}
             />
           }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diffAgainstReference, MAX_DIFF_LENGTH } from './diff'
+import { diffAgainstReference, MAX_DIFF_LENGTH, normalizeReference } from './diff'
 
 describe('diffAgainstReference', () => {
   it('完全一致の場合は ranges が空で excessFrom も null になる', () => {
@@ -145,5 +145,19 @@ describe('diffAgainstReference', () => {
     const hugeReference = 'a'.repeat(MAX_DIFF_LENGTH + 1)
     const input = 'a'.repeat(10)
     expect(diffAgainstReference(input, hugeReference)).toEqual({ ranges: [], excessFrom: null })
+  })
+})
+
+describe('normalizeReference', () => {
+  it('CRLF を LF に正規化する', () => {
+    expect(normalizeReference('a\r\nb')).toBe('a\nb')
+  })
+
+  it('CR のみも LF に正規化する', () => {
+    expect(normalizeReference('a\rb')).toBe('a\nb')
+  })
+
+  it('すでに LF の場合はそのまま返す', () => {
+    expect(normalizeReference('a\nb')).toBe('a\nb')
   })
 })
