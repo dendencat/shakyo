@@ -1,0 +1,4 @@
+interface:
+  display_name: "shakyo Orchestration"
+  short_description: "Coordinate shakyo repo agent workflow"
+  default_prompt: "Use $shakyo-orchestration to coordinate this shakyo task with PLAN.md scope and AGENTS.md workflow."
