@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { PdfViewer } from './PdfViewer'
 import { languageExtension, langIdFromFilename } from '../lib/langs'
@@ -10,13 +10,23 @@ type ReferenceContent =
 
 type Tab = 'file' | 'web'
 
-export function ReferencePane() {
+export function ReferencePane({
+  onReferenceTextChange,
+}: {
+  onReferenceTextChange?: (text: string | null) => void
+}) {
   const [tab, setTab] = useState<Tab>('file')
   const [content, setContent] = useState<ReferenceContent | null>(null)
   const [webUrl, setWebUrl] = useState('')
   const [loadedUrl, setLoadedUrl] = useState('')
   const [fileError, setFileError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    onReferenceTextChange?.(
+      tab === 'file' && content?.kind === 'text' ? content.text : null,
+    )
+  }, [tab, content, onReferenceTextChange])
 
   const openFile = async (file: File) => {
     setFileError(null)
