@@ -3,6 +3,7 @@ import CodeMirror from '@uiw/react-codemirror'
 import { PdfViewer } from './PdfViewer'
 import { languageExtension, langIdFromFilename } from '../lib/langs'
 import type { LangId } from '../lib/langs'
+import { CODE_SAMPLES } from '../lib/samples'
 
 type ReferenceContent =
   | { kind: 'text'; name: string; text: string; lang: LangId | null }
@@ -11,22 +12,25 @@ type ReferenceContent =
 type Tab = 'file' | 'web'
 
 export function ReferencePane({
-  onReferenceTextChange,
+  onReferenceChange,
 }: {
-  onReferenceTextChange?: (text: string | null) => void
+  onReferenceChange?: (ref: { name: string; text: string } | null) => void
 }) {
   const [tab, setTab] = useState<Tab>('file')
   const [content, setContent] = useState<ReferenceContent | null>(null)
   const [webUrl, setWebUrl] = useState('')
   const [loadedUrl, setLoadedUrl] = useState('')
   const [fileError, setFileError] = useState<string | null>(null)
+  const [sampleSelectValue, setSampleSelectValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    onReferenceTextChange?.(
-      tab === 'file' && content?.kind === 'text' ? content.text : null,
+    onReferenceChange?.(
+      tab === 'file' && content?.kind === 'text'
+        ? { name: content.name, text: content.text }
+        : null,
     )
-  }, [tab, content, onReferenceTextChange])
+  }, [tab, content, onReferenceChange])
 
   const openFile = async (file: File) => {
     setFileError(null)
@@ -50,6 +54,14 @@ export function ReferencePane({
     const url = webUrl.trim()
     if (!url) return
     setLoadedUrl(/^https?:\/\//.test(url) ? url : `https://${url}`)
+  }
+
+  const selectSample = (id: string) => {
+    const sample = CODE_SAMPLES.find((s) => s.id === id)
+    if (!sample) return
+    setFileError(null)
+    setContent({ kind: 'text', name: sample.title, text: sample.code, lang: sample.lang })
+    setSampleSelectValue('')
   }
 
   return (
@@ -82,6 +94,14 @@ export function ReferencePane({
                 e.target.value = ''
               }}
             />
+            <select value={sampleSelectValue} onChange={(e) => selectSample(e.target.value)}>
+              <option value="">サンプルから選ぶ…</option>
+              {CODE_SAMPLES.map((sample) => (
+                <option key={sample.id} value={sample.id}>
+                  {sample.title}
+                </option>
+              ))}
+            </select>
             {content && <span className="file-name" title={content.name}>{content.name}</span>}
           </div>
           {fileError && <p className="error-text">{fileError}</p>}
