@@ -32,6 +32,14 @@ function pushRange(ranges: DiffRange[], from: number, to: number, type: DiffRang
 }
 
 /**
+ * お手本テキスト(reference)の改行コードを LF に正規化する。
+ * diffAgainstReference と同じ正規化ロジックを外部から再利用するために公開する。
+ */
+export function normalizeReference(text: string): string {
+  return text.replace(/\r\n|\r/g, '\n')
+}
+
+/**
  * お手本テキスト(reference)とエディタ入力(input)を行番号で位置整列し、
  * 行内は文字単位のポジショナル比較で差分を検出する。
  *
@@ -43,7 +51,7 @@ export function diffAgainstReference(input: string, reference: string): DiffResu
     return { ranges: [], excessFrom: null }
   }
 
-  const normalizedReference = reference.replace(/\r\n|\r/g, '\n')
+  const normalizedReference = normalizeReference(reference)
 
   const inputLines = input.split('\n')
   const refLines = normalizedReference.split('\n')

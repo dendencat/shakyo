@@ -3,6 +3,7 @@ import type { EditorState, Range } from '@codemirror/state'
 import { Decoration, EditorView } from '@codemirror/view'
 import type { DecorationSet } from '@codemirror/view'
 import { diffAgainstReference } from './diff'
+import type { DiffResult } from './diff'
 
 // お手本テキストの設定/クリア(null = 判定OFF)
 export const setDiffTarget = StateEffect.define<string | null>()
@@ -10,10 +11,11 @@ export const setDiffTarget = StateEffect.define<string | null>()
 interface DiffHighlightValue {
   reference: string | null
   decorations: DecorationSet
+  result: DiffResult | null
 }
 
-function buildDecorations(state: EditorState, reference: string): DecorationSet {
-  const { ranges, excessFrom } = diffAgainstReference(state.doc.toString(), reference)
+function buildDecorations(state: EditorState, result: DiffResult): DecorationSet {
+  const { ranges, excessFrom } = result
   const decorations: Range<Decoration>[] = []
 
   for (const range of ranges) {
@@ -40,7 +42,7 @@ function buildDecorations(state: EditorState, reference: string): DecorationSet 
 
 export const diffHighlight = StateField.define<DiffHighlightValue>({
   create(): DiffHighlightValue {
-    return { reference: null, decorations: Decoration.none }
+    return { reference: null, decorations: Decoration.none, result: null }
   },
   update(value, tr) {
     let reference = value.reference
@@ -58,10 +60,16 @@ export const diffHighlight = StateField.define<DiffHighlightValue>({
     }
 
     if (reference == null) {
-      return { reference, decorations: Decoration.none }
+      return { reference, decorations: Decoration.none, result: null }
     }
 
-    return { reference, decorations: buildDecorations(tr.state, reference) }
+    const result = diffAgainstReference(tr.state.doc.toString(), reference)
+    return { reference, decorations: buildDecorations(tr.state, result), result }
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decorations),
 })
+
+// diffHighlight フィールドが未登録の state では null を返す
+export function getDiffResult(state: EditorState): DiffResult | null {
+  return state.field(diffHighlight, false)?.result ?? null
+}
