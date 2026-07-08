@@ -15,9 +15,17 @@ export function ExplainPanel({
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [sourceLabel, setSourceLabel] = useState('')
+  const [copied, setCopied] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const copyTimerRef = useRef<number | undefined>(undefined)
 
-  useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(
+    () => () => {
+      abortRef.current?.abort()
+      window.clearTimeout(copyTimerRef.current)
+    },
+    [],
+  )
 
   const explain = async () => {
     const settings = loadSettings()
@@ -58,12 +66,49 @@ export function ExplainPanel({
 
   const stop = () => abortRef.current?.abort()
 
+  const copyText = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setError(null)
+      setCopied(true)
+      window.clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+      window.clearTimeout(copyTimerRef.current)
+      setError('クリップボードへのコピーに失敗しました。')
+    }
+  }
+
   return (
     <section className="explain-panel">
       <div className="pane-header">
         <h2>コードの意味解説</h2>
         <div className="toolbar">
           {sourceLabel && <span className="badge">{sourceLabel}</span>}
+          {copied && <span className="badge">コピーしました</span>}
+          <button
+            className="icon-button"
+            onClick={() => void copyText()}
+            disabled={!text}
+            aria-label="解説をコピー"
+            title="解説をコピー"
+          >
+            {copied ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M9 5h6M9 4h6v3H9zM7 6H5v15h14V6h-2"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
           {running ? (
             <button onClick={stop}>停止</button>
           ) : (

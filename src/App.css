@@ -37,15 +37,21 @@
   height: 100%;
 }
 
+.split-pane.vertical {
+  flex-direction: column;
+}
+
 .split-pane-left {
   flex-shrink: 0;
   min-width: 0;
+  min-height: 0;
   height: 100%;
 }
 
 .split-pane-right {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   height: 100%;
 }
 
@@ -60,10 +66,10 @@
   background: var(--accent-border);
 }
 
-.right-stack {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+.split-pane.vertical > .split-pane-divider {
+  height: 5px;
+  width: auto;
+  cursor: row-resize;
 }
 
 /* --- ペイン共通 --- */
@@ -110,6 +116,29 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.icon-button {
+  border: none;
+  background: none;
+  padding: 4px;
+  border-radius: 6px;
+  color: inherit;
+  line-height: 0;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--accent-bg);
+}
+
+.icon-button:disabled {
+  color: var(--text-sub);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.icon-button svg {
+  stroke: currentColor;
 }
 
 .pane-body > .toolbar {
@@ -251,11 +280,9 @@
 
 .explain-panel {
   border-top: 1px solid var(--border);
-  height: 32%;
-  min-height: 140px;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
 }
 
 .explain-body {
@@ -399,5 +426,39 @@
 .modal-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- 保存/読込ダイアログ --- */
+
+.snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.snapshot-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.snapshot-name {
+  font-weight: 600;
+}
+
+.snapshot-date {
+  color: var(--text-sub);
+  font-size: 12px;
+}
+
+.snapshot-actions {
+  display: flex;
   gap: 8px;
 }

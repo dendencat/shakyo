@@ -33,12 +33,15 @@ export default function App() {
       </header>
       <main className="app-main">
         <SplitPane
+          storageKey="shakyo.split.main"
           left={<ReferencePane onReferenceTextChange={setReferenceText} />}
           right={
-            <div className="right-stack">
-              <ShakyoEditor editorRef={editorRef} referenceText={referenceText} />
-              <ExplainPanel getCode={getCode} onOpenSettings={() => setSettingsOpen(true)} />
-            </div>
+            <SplitPane
+              direction="vertical"
+              storageKey="shakyo.split.right"
+              left={<ShakyoEditor editorRef={editorRef} referenceText={referenceText} />}
+              right={<ExplainPanel getCode={getCode} onOpenSettings={() => setSettingsOpen(true)} />}
+            />
           }
         />
       </main>

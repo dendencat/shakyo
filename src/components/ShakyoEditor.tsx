@@ -5,6 +5,7 @@ import { LANGUAGE_OPTIONS, languageExtension } from '../lib/langs'
 import type { LangId } from '../lib/langs'
 import { KEY_DRAFT, KEY_EDITOR_LANG } from '../lib/settings'
 import { diffHighlight, setDiffTarget } from '../lib/diffHighlight'
+import { SaveLoadDialog } from './SaveLoadDialog'
 
 function initialLang(): LangId {
   const saved = localStorage.getItem(KEY_EDITOR_LANG)
@@ -22,6 +23,7 @@ export function ShakyoEditor({
   const [code, setCode] = useState(() => localStorage.getItem(KEY_DRAFT) ?? '')
   const [lang, setLang] = useState<LangId>(initialLang)
   const [checkEnabled, setCheckEnabled] = useState(false)
+  const [saveLoadOpen, setSaveLoadOpen] = useState(false)
   const saveTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -49,46 +51,62 @@ export function ShakyoEditor({
   }
 
   return (
-    <section className="pane editor-pane">
-      <div className="pane-header">
-        <h2>写経エディタ</h2>
-        <div className="toolbar">
-          <label>
-            言語:{' '}
-            <select value={lang} onChange={(e) => setLang(e.target.value as LangId)}>
-              {LANGUAGE_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label
-            className="check-label"
-            title={referenceText == null ? 'お手本のテキストファイルを開くと使えます' : undefined}
-          >
-            <input
-              type="checkbox"
-              checked={checkEnabled}
-              disabled={referenceText == null}
-              onChange={(e) => setCheckEnabled(e.target.checked)}
-            />
-            正誤判定
-          </label>
-          <button onClick={clear}>クリア</button>
+    <>
+      <section className="pane editor-pane">
+        <div className="pane-header">
+          <h2>写経エディタ</h2>
+          <div className="toolbar">
+            <label>
+              言語:{' '}
+              <select value={lang} onChange={(e) => setLang(e.target.value as LangId)}>
+                {LANGUAGE_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label
+              className="check-label"
+              title={referenceText == null ? 'お手本のテキストファイルを開くと使えます' : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={checkEnabled}
+                disabled={referenceText == null}
+                onChange={(e) => setCheckEnabled(e.target.checked)}
+              />
+              正誤判定
+            </label>
+            <button onClick={() => setSaveLoadOpen(true)}>保存/読込…</button>
+            <button onClick={clear}>クリア</button>
+          </div>
         </div>
-      </div>
-      <div className="pane-body editor-body">
-        <CodeMirror
-          ref={editorRef}
-          value={code}
-          onChange={onChange}
-          extensions={extensions}
-          basicSetup={{ lineNumbers: true, foldGutter: false }}
-          placeholder="ここにお手本のコードを書き写していきます…"
-          className="shakyo-code"
+        <div className="pane-body editor-body">
+          <CodeMirror
+            ref={editorRef}
+            value={code}
+            onChange={onChange}
+            extensions={extensions}
+            basicSetup={{ lineNumbers: true, foldGutter: false }}
+            placeholder="ここにお手本のコードを書き写していきます…"
+            className="shakyo-code"
+          />
+        </div>
+      </section>
+      {saveLoadOpen && (
+        <SaveLoadDialog
+          code={code}
+          lang={lang}
+          onLoad={(snapshot) => {
+            window.clearTimeout(saveTimer.current)
+            setCode(snapshot.code)
+            localStorage.setItem(KEY_DRAFT, snapshot.code)
+            setLang(snapshot.lang)
+          }}
+          onClose={() => setSaveLoadOpen(false)}
         />
-      </div>
-    </section>
+      )}
+    </>
   )
 }
