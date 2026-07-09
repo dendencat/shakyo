@@ -1,4 +1,6 @@
 :root {
+  color-scheme: light;
+
   --text: #3a3644;
   --text-sub: #6b6375;
   --text-h: #08060d;
@@ -14,9 +16,33 @@
   --warn-bg: rgba(180, 83, 9, 0.15);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --on-accent: #ffffff;
+  --backdrop: rgba(8, 6, 13, 0.4);
 
   --sans: system-ui, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --text: #dcd8e6;
+  --text-sub: #a39bb3;
+  --text-h: #f5f3fa;
+  --bg: #1a1721;
+  --bg-sub: #221e2b;
+  --border: #38334370;
+  --code-bg: #24212c;
+  --accent: #a688ff;
+  --accent-bg: rgba(166, 136, 255, 0.16);
+  --accent-border: rgba(166, 136, 255, 0.6);
+  --danger: #ff8a75;
+  --danger-bg: rgba(255, 138, 117, 0.28);
+  --warn-bg: rgba(240, 160, 60, 0.28);
+  --shadow:
+    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.3) 0 4px 6px -2px;
+  --on-accent: #1a1721;
+  --backdrop: rgba(0, 0, 0, 0.6);
 }
 
 *,
@@ -64,7 +90,7 @@ button:hover {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 button.primary:hover {

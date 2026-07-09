@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { LangId } from '../lib/langs'
 import { deleteSnapshot, listSnapshots, saveSnapshot } from '../lib/snapshots'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 export function SaveLoadDialog({
   code,
@@ -16,6 +17,7 @@ export function SaveLoadDialog({
   const [name, setName] = useState('')
   const [snapshots, setSnapshots] = useState(() => listSnapshots())
   const [error, setError] = useState<string | null>(null)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const trimmedName = name.trim()
   const canSave = trimmedName.length > 0
   const sortedSnapshots = useMemo(
@@ -75,7 +77,14 @@ export function SaveLoadDialog({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-label="保存と読み込み" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="保存と読み込み"
+        ref={trapRef}
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2>保存と読み込み</h2>
         <label className="field">
           名前

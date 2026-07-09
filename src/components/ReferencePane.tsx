@@ -13,8 +13,10 @@ type Tab = 'file' | 'web'
 
 export function ReferencePane({
   onReferenceChange,
+  resolvedTheme,
 }: {
   onReferenceChange?: (ref: { name: string; text: string } | null) => void
+  resolvedTheme: 'light' | 'dark'
 }) {
   const [tab, setTab] = useState<Tab>('file')
   const [content, setContent] = useState<ReferenceContent | null>(null)
@@ -116,6 +118,7 @@ export function ReferencePane({
                 value={content.text}
                 readOnly
                 editable={false}
+                theme={resolvedTheme}
                 extensions={content.lang ? languageExtension(content.lang) : []}
                 basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }}
                 className="reference-code"

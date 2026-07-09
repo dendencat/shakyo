@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { DEFAULT_MODEL, KEY_DRAFT, KEY_EDITOR_LANG, loadSettings, saveSettings } from './settings'
+import {
+  DEFAULT_MODEL,
+  isSettingsStorageKey,
+  KEY_DRAFT,
+  KEY_EDITOR_LANG,
+  loadSettings,
+  saveSettings,
+} from './settings'
 
 describe('settings', () => {
   beforeEach(() => {
@@ -40,5 +47,27 @@ describe('settings', () => {
     localStorage.setItem(KEY_EDITOR_LANG, 'ts')
     expect(localStorage.getItem(KEY_DRAFT)).toBe('console.log(1)')
     expect(localStorage.getItem(KEY_EDITOR_LANG)).toBe('ts')
+  })
+
+  describe('isSettingsStorageKey', () => {
+    it('APIキーのキーの場合はtrueを返す', () => {
+      expect(isSettingsStorageKey('shakyo.openai.apiKey')).toBe(true)
+    })
+
+    it('モデル名のキーの場合はtrueを返す', () => {
+      expect(isSettingsStorageKey('shakyo.openai.model')).toBe(true)
+    })
+
+    it('keyがnullの場合はtrueを返す(localStorage.clear()相当)', () => {
+      expect(isSettingsStorageKey(null)).toBe(true)
+    })
+
+    it('shakyo.editor.draftの場合はfalseを返す', () => {
+      expect(isSettingsStorageKey(KEY_DRAFT)).toBe(false)
+    })
+
+    it('無関係な任意の文字列の場合はfalseを返す', () => {
+      expect(isSettingsStorageKey('some.unrelated.key')).toBe(false)
+    })
   })
 })

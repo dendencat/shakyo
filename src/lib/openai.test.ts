@@ -30,6 +30,7 @@ async function collect(gen: AsyncGenerator<string>): Promise<string> {
 
 describe('streamExplanation', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -134,23 +135,172 @@ describe('streamExplanation', () => {
     ).rejects.toThrow('HTTP 500')
   })
 
-  it('AbortSignalによる中断でfetchにsignalが渡される', async () => {
+  it('AbortSignalによる中断でfetchに渡されたsignalが連動してabortされる', async () => {
     const controller = new AbortController()
+    let receivedSignal: AbortSignal | undefined
     const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
-      expect(init.signal).toBe(controller.signal)
-      return Promise.reject(new DOMException('Aborted', 'AbortError'))
+      receivedSignal = init.signal ?? undefined
+      // タイムアウト合成によりfetchに渡るsignalは呼び出し元signalそのものとは限らない(AbortSignal.anyで
+      // 新規生成されるため)。ここでは「AbortSignalであること」「呼び出し元abortに連動すること」を検証する。
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      })
     })
     vi.stubGlobal('fetch', fetchMock)
 
+    const resultPromise = collect(
+      streamExplanation({
+        apiKey: 'sk-test',
+        model: 'gpt-5.4-mini',
+        code: 'x',
+        signal: controller.signal,
+      }),
+    )
+    const assertion = expect(resultPromise).rejects.toThrow('Aborted')
+
+    controller.abort()
+
+    await assertion
+    expect(receivedSignal?.aborted).toBe(true)
+  })
+
+  it('fetchがTypeErrorでrejectされた場合はネットワークエラーメッセージを投げる', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
     await expect(
-      collect(
-        streamExplanation({
-          apiKey: 'sk-test',
-          model: 'gpt-5.4-mini',
-          code: 'x',
-          signal: controller.signal,
-        }),
-      ),
-    ).rejects.toThrow('Aborted')
+      collect(streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' })),
+    ).rejects.toThrow('ネットワークエラーが発生しました')
+  })
+
+  it('fetchが永遠にpendingの場合はconnectTimeoutMs経過で接続タイムアウトになる', async () => {
+    vi.useFakeTimers()
+    // 実際のfetchはsignalのabortでpending中のPromiseをAbortErrorでrejectする。挙動を模したモック。
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const resultPromise = collect(
+      streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' }),
+    )
+    // 先にrejects.toThrowでハンドラを登録してからタイマーを進める(unhandled rejection回避)
+    const assertion = expect(resultPromise).rejects.toThrow('接続がタイムアウトしました')
+
+    await vi.advanceTimersByTimeAsync(15_000)
+
+    await assertion
+  })
+
+  it('1チャンク受信後read()が解決しないストリームはidleTimeoutMs経過で応答途絶になる', async () => {
+    vi.useFakeTimers()
+    const encoder = new TextEncoder()
+    let streamController: ReadableStreamDefaultController<Uint8Array>
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller
+      },
+    })
+    // 実際のfetchはsignalのabortでボディストリームをエラーにする。挙動を模したモック。
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      init.signal?.addEventListener('abort', () => {
+        streamController.error(new DOMException('The operation was aborted.', 'AbortError'))
+      })
+      return Promise.resolve(okResponse(stream))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const resultPromise = collect(
+      streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' }),
+    )
+
+    streamController!.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"内容"}}]}\n\n'))
+    // 先にrejects.toThrowでハンドラを登録してからタイマーを進める(unhandled rejection回避)
+    const assertion = expect(resultPromise).rejects.toThrow('応答が途絶えたため中断しました')
+
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    await assertion
+  })
+
+  it('idleTimeoutMs未満の間隔でチャンクが届き続ければタイマーがリセットされ完走する', async () => {
+    vi.useFakeTimers()
+    const encoder = new TextEncoder()
+    const gaps = [40_000, 40_000, 40_000]
+    let index = 0
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (index < gaps.length) {
+          await new Promise((resolve) => setTimeout(resolve, gaps[index]))
+          controller.enqueue(
+            encoder.encode(`data: {"choices":[{"delta":{"content":"c${index}"}}]}\n\n`),
+          )
+          index += 1
+        } else {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        }
+      },
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse(stream)))
+
+    const resultPromise = collect(
+      streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' }),
+    )
+
+    for (const gap of gaps) {
+      await vi.advanceTimersByTimeAsync(gap)
+    }
+
+    const result = await resultPromise
+    expect(result).toBe('c0c1c2')
+  })
+
+  it('呼び出し元のAbortController.abort()はAbortErrorのまま伝播しタイムアウトメッセージにならない', async () => {
+    const controller = new AbortController()
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const resultPromise = collect(
+      streamExplanation({
+        apiKey: 'sk-test',
+        model: 'gpt-5.4-mini',
+        code: 'x',
+        signal: controller.signal,
+      }),
+    )
+
+    controller.abort()
+
+    await expect(resultPromise).rejects.toThrow('Aborted')
+    await expect(resultPromise).rejects.not.toThrow('タイムアウト')
+  })
+
+  it('正常完了後にタイマーが残らない', async () => {
+    vi.useFakeTimers()
+    const stream = sseStreamFromChunks([
+      'data: {"choices":[{"delta":{"content":"完走"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse(stream)))
+
+    const result = await collect(
+      streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' }),
+    )
+
+    expect(result).toBe('完走')
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

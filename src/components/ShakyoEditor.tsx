@@ -20,10 +20,12 @@ export function ShakyoEditor({
   editorRef,
   referenceText,
   referenceName,
+  resolvedTheme,
 }: {
   editorRef: React.RefObject<ReactCodeMirrorRef | null>
   referenceText: string | null
   referenceName: string | null
+  resolvedTheme: 'light' | 'dark'
 }) {
   const [code, setCode] = useState(() => localStorage.getItem(KEY_DRAFT) ?? '')
   const [lang, setLang] = useState<LangId>(initialLang)
@@ -197,6 +199,7 @@ export function ShakyoEditor({
             ref={editorRef}
             value={code}
             onChange={onChange}
+            theme={resolvedTheme}
             extensions={extensions}
             basicSetup={{ lineNumbers: true, foldGutter: false }}
             placeholder="ここにお手本のコードを書き写していきます…"
