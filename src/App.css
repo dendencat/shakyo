@@ -21,7 +21,7 @@
   font-size: 13px;
 }
 
-.settings-button {
+.theme-toggle-button {
   margin-left: auto;
 }
 
@@ -221,6 +221,7 @@
   flex: 1;
   border: none;
   width: 100%;
+  /* iframe内は一般的なWebページ(白背景前提)を表示するため、テーマに関わらず白のまま固定する */
   background: #fff;
 }
 
@@ -233,6 +234,15 @@
   margin: 0 auto 12px;
   box-shadow: var(--shadow);
   max-width: 100%;
+}
+
+.pdf-page-slot {
+  margin: 0 auto 12px;
+  max-width: 100%;
+}
+
+.pdf-page-slot .pdf-page {
+  margin: 0;
 }
 
 /* --- 写経エディタ --- */
@@ -400,7 +410,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(8, 6, 13, 0.4);
+  background: var(--backdrop);
   display: flex;
   align-items: center;
   justify-content: center;

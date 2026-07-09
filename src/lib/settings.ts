@@ -21,3 +21,8 @@ export function saveSettings(settings: Settings) {
   localStorage.setItem(KEY_API_KEY, settings.apiKey)
   localStorage.setItem(KEY_MODEL, settings.model || DEFAULT_MODEL)
 }
+
+export function isSettingsStorageKey(key: string | null): boolean {
+  // key === null は localStorage.clear() が呼ばれた場合の storage イベントに対応する
+  return key === null || key === KEY_API_KEY || key === KEY_MODEL
+}
