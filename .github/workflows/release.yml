@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースするバージョンタグ (例: v1.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: バージョン形式の検証
+        run: |
+          if [[ ! "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version は v1.2.3 形式で指定してください: ${{ inputs.version }}"
+            exit 1
+          fi
+      - name: 既存タグ・リリースの確認
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 誤って既存リリースを上書きしないよう、同名があれば失敗させる
+          if gh release view "${{ inputs.version }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::リリース ${{ inputs.version }} は既に存在します"
+            exit 1
+          fi
+      - name: リリース作成
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES_FILE=".github/release-notes/${{ inputs.version }}.md"
+          if [[ -f "$NOTES_FILE" ]]; then
+            gh release create "${{ inputs.version }}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "${{ inputs.version }}" \
+              --notes-file "$NOTES_FILE"
+          else
+            gh release create "${{ inputs.version }}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "${{ inputs.version }}" \
+              --generate-notes
+          fi
