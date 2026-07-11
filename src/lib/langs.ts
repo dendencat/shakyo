@@ -33,6 +33,12 @@ export function languageExtension(id: LangId): Extension[] {
   return factory ? [factory()] : []
 }
 
+const LANGUAGE_IDS = new Set<LangId>(LANGUAGE_OPTIONS.map(({ id }) => id))
+
+export function isLangId(value: unknown): value is LangId {
+  return typeof value === 'string' && LANGUAGE_IDS.has(value as LangId)
+}
+
 const EXTENSION_MAP: Record<string, LangId> = {
   ts: 'ts',
   mts: 'ts',

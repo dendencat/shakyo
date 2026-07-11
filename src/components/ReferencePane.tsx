@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { PdfViewer } from './PdfViewer'
-import { languageExtension, langIdFromFilename } from '../lib/langs'
+import { LANGUAGE_OPTIONS, languageExtension, langIdFromFilename } from '../lib/langs'
 import type { LangId } from '../lib/langs'
 import { CODE_SAMPLES } from '../lib/samples'
+import { loadPasteReference, savePasteReference } from '../lib/pasteReference'
+import type { PasteReference } from '../lib/pasteReference'
 
 type ReferenceContent =
   | { kind: 'text'; name: string; text: string; lang: LangId | null }
   | { kind: 'pdf'; name: string; data: ArrayBuffer }
 
-type Tab = 'file' | 'web'
+type Tab = 'file' | 'paste' | 'web'
 
 export function ReferencePane({
   onReferenceChange,
@@ -25,14 +27,25 @@ export function ReferencePane({
   const [fileError, setFileError] = useState<string | null>(null)
   const [sampleSelectValue, setSampleSelectValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const initialPasteRef = useRef<PasteReference | null | undefined>(undefined)
+  if (initialPasteRef.current === undefined) {
+    initialPasteRef.current = loadPasteReference()
+  }
+  const [pasteRef, setPasteRef] = useState<PasteReference | null>(() => initialPasteRef.current ?? null)
+  const [pasteDraft, setPasteDraft] = useState(() => initialPasteRef.current?.text ?? '')
+  const [pasteLang, setPasteLang] = useState<LangId>(() => initialPasteRef.current?.lang ?? 'ts')
+  const [pasteEditing, setPasteEditing] = useState(() => initialPasteRef.current == null)
+  const [pasteError, setPasteError] = useState<string | null>(null)
 
   useEffect(() => {
     onReferenceChange?.(
       tab === 'file' && content?.kind === 'text'
         ? { name: content.name, text: content.text }
+        : tab === 'paste' && !pasteEditing && pasteRef != null
+          ? { name: '貼り付けテキスト', text: pasteRef.text }
         : null,
     )
-  }, [tab, content, onReferenceChange])
+  }, [tab, content, pasteEditing, pasteRef, onReferenceChange])
 
   const openFile = async (file: File) => {
     setFileError(null)
@@ -66,6 +79,31 @@ export function ReferencePane({
     setSampleSelectValue('')
   }
 
+  const savePaste = (nextRef: PasteReference) => {
+    setPasteError(null)
+    try {
+      savePasteReference(nextRef)
+    } catch (e) {
+      setPasteError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const setPasteReference = () => {
+    const nextRef = { text: pasteDraft, lang: pasteLang }
+    setPasteRef(nextRef)
+    setPasteEditing(false)
+    savePaste(nextRef)
+  }
+
+  const changePasteLang = (lang: LangId) => {
+    setPasteLang(lang)
+    if (pasteEditing) return
+    if (pasteRef == null) return
+    const nextRef = { ...pasteRef, lang }
+    setPasteRef(nextRef)
+    savePaste(nextRef)
+  }
+
   return (
     <section className="pane reference-pane">
       <div className="pane-header">
@@ -73,6 +111,9 @@ export function ReferencePane({
         <div className="tab-bar" role="tablist">
           <button role="tab" aria-selected={tab === 'file'} className={tab === 'file' ? 'active' : ''} onClick={() => setTab('file')}>
             ファイル
+          </button>
+          <button role="tab" aria-selected={tab === 'paste'} className={tab === 'paste' ? 'active' : ''} onClick={() => setTab('paste')}>
+            貼り付け
           </button>
           <button role="tab" aria-selected={tab === 'web'} className={tab === 'web' ? 'active' : ''} onClick={() => setTab('web')}>
             Webページ
@@ -125,6 +166,62 @@ export function ReferencePane({
               />
             )}
             {content?.kind === 'pdf' && <PdfViewer data={content.data} />}
+          </div>
+        </div>
+      )}
+
+      {tab === 'paste' && (
+        <div className="pane-body">
+          <div className="toolbar">
+            <label>
+              言語:{' '}
+              <select value={pasteLang} onChange={(e) => changePasteLang(e.target.value as LangId)}>
+                {LANGUAGE_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {pasteEditing ? (
+              <button className="primary" disabled={pasteDraft.trim() === ''} onClick={setPasteReference}>
+                お手本にセット
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setPasteDraft(pasteRef?.text ?? '')
+                  setPasteEditing(true)
+                  setPasteError(null)
+                }}
+              >
+                編集
+              </button>
+            )}
+          </div>
+          {pasteError && <p className="error-text">{pasteError}</p>}
+          <div className="reference-content">
+            {pasteEditing ? (
+              <textarea
+                className="paste-input"
+                aria-label="お手本のコード貼り付け"
+                placeholder="お手本のコードをここに貼り付け…"
+                value={pasteDraft}
+                onChange={(e) => setPasteDraft(e.target.value)}
+              />
+            ) : (
+              pasteRef != null && (
+                <CodeMirror
+                  value={pasteRef.text}
+                  readOnly
+                  editable={false}
+                  theme={resolvedTheme}
+                  extensions={languageExtension(pasteLang)}
+                  basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }}
+                  className="reference-code"
+                />
+              )
+            )}
           </div>
         </div>
       )}

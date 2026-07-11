@@ -1,4 +1,4 @@
-import { LANGUAGE_OPTIONS, type LangId } from './langs'
+import { isLangId, type LangId } from './langs'
 
 const KEY_SNAPSHOTS = 'shakyo.snapshots'
 const QUOTA_MESSAGE = '保存容量が上限に達しました。不要なスナップショットを削除してください。'
@@ -9,12 +9,6 @@ export type Snapshot = {
   lang: LangId
   code: string
   savedAt: number
-}
-
-const LANGUAGE_IDS = new Set<LangId>(LANGUAGE_OPTIONS.map(({ id }) => id))
-
-function isLangId(value: unknown): value is LangId {
-  return typeof value === 'string' && LANGUAGE_IDS.has(value as LangId)
 }
 
 function isSnapshot(value: unknown): value is Snapshot {
