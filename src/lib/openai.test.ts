@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { streamExplanation } from './openai'
+import { buildExplanationMessages, streamChat, streamExplanation } from './openai'
 
 function sseStreamFromChunks(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
@@ -302,5 +302,42 @@ describe('streamExplanation', () => {
 
     expect(result).toBe('完走')
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('chat messages', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('buildExplanationMessagesはsystemとコードを含むuserメッセージを返す', () => {
+    const messages = buildExplanationMessages('const answer = 42')
+
+    expect(messages).toHaveLength(2)
+    expect(messages[0].role).toBe('system')
+    expect(messages[1]).toEqual(
+      expect.objectContaining({ role: 'user', content: expect.stringContaining('const answer = 42') }),
+    )
+  })
+
+  it('streamChatは指定したmessagesをrequest bodyに入れてチャンクを返す', async () => {
+    const messages = [
+      { role: 'system' as const, content: 'system' },
+      { role: 'user' as const, content: 'question' },
+    ]
+    const stream = sseStreamFromChunks([
+      'data: {"choices":[{"delta":{"content":"回答"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(stream))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await collect(
+      streamChat({ apiKey: 'sk-test', model: 'gpt-5.4-mini', messages }),
+    )
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+
+    expect(JSON.parse(init.body as string).messages).toEqual(messages)
+    expect(result).toBe('回答')
   })
 })

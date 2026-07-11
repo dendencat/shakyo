@@ -419,6 +419,36 @@
   animation: blink 1s step-start infinite;
 }
 
+.followup-question {
+  border-left: 3px solid var(--accent-border);
+  background: var(--accent-bg);
+  padding: 8px 12px;
+  margin-top: 16px;
+  color: var(--text);
+}
+
+.followup-form {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.followup-form input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.followup-form input:focus {
+  outline: 2px solid var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
 @keyframes blink {
   50% {
     opacity: 0;

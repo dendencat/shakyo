@@ -10,12 +10,24 @@ const SYSTEM_PROMPT =
   '初学者にも分かる日本語で簡潔に解説してください。' +
   '見出し(##)・箇条書き・コードブロック(言語名付きフェンス)を使ったMarkdownで簡潔に構成してください。'
 
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export function buildExplanationMessages(code: string): ChatMessage[] {
+  return [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: `次のコードを解説してください。\n\n\`\`\`\n${code}\n\`\`\`` },
+  ]
+}
+
 type TimeoutKind = 'connect' | 'idle' | null
 
-export async function* streamExplanation(options: {
+export async function* streamChat(options: {
   apiKey: string
   model: string
-  code: string
+  messages: ChatMessage[]
   signal?: AbortSignal
   connectTimeoutMs?: number
   idleTimeoutMs?: number
@@ -23,7 +35,7 @@ export async function* streamExplanation(options: {
   const {
     apiKey,
     model,
-    code,
+    messages,
     signal,
     connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
     idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
@@ -56,10 +68,7 @@ export async function* streamExplanation(options: {
         body: JSON.stringify({
           model,
           stream: true,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `次のコードを解説してください。\n\n\`\`\`\n${code}\n\`\`\`` },
-          ],
+          messages,
         }),
       })
     } catch (err) {
@@ -118,6 +127,18 @@ export async function* streamExplanation(options: {
     clearTimeout(idleTimer)
     cleanupSignal()
   }
+}
+
+export async function* streamExplanation(options: {
+  apiKey: string
+  model: string
+  code: string
+  signal?: AbortSignal
+  connectTimeoutMs?: number
+  idleTimeoutMs?: number
+}): AsyncGenerator<string> {
+  const { code, ...rest } = options
+  yield* streamChat({ ...rest, messages: buildExplanationMessages(code) })
 }
 
 /**
