@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { DEFAULT_MODEL, isSettingsStorageKey, loadSettings, saveSettings } from '../lib/settings'
+import {
+  DEFAULT_MODEL,
+  isSettingsStorageKey,
+  loadSettings,
+  saveSettings,
+  type ReasoningEffort,
+} from '../lib/settings'
 import { useFocusTrap } from '../lib/useFocusTrap'
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
@@ -62,6 +68,27 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             }}
           />
         </label>
+        <details className="field-advanced">
+          <summary>詳細設定</summary>
+          <label className="field">
+            解説の深さ
+            <select
+              value={settings.reasoningEffort}
+              onChange={(e) => {
+                setDirty(true)
+                setSettings((s) => ({ ...s, reasoningEffort: e.target.value as ReasoningEffort }))
+              }}
+            >
+              <option value="minimal">最速(推奨)</option>
+              <option value="low">速い・少し考える</option>
+              <option value="medium">じっくり</option>
+              <option value="high">最も深く考える(遅い)</option>
+            </select>
+          </label>
+          <p className="hint">
+            深くするほど解説が始まるまでの待ち時間が長くなります。
+          </p>
+        </details>
         <p className="hint">
           APIキーはこのブラウザのlocalStorageにのみ保存され、OpenAI API以外には送信されません。
         </p>

@@ -544,6 +544,20 @@
   color: var(--text-h);
 }
 
+.field-advanced summary {
+  cursor: pointer;
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.field-advanced .field {
+  margin-top: 8px;
+}
+
+.field-advanced .hint {
+  margin-top: 4px;
+}
+
 .modal .hint {
   padding: 0;
 }
