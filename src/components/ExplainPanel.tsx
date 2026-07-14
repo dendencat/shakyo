@@ -54,6 +54,7 @@ export function ExplainPanel({
       for await (const chunk of streamExplanation({
         apiKey: settings.apiKey,
         model: settings.model,
+        reasoningEffort: settings.reasoningEffort,
         code: target.code,
         signal: controller.signal,
       })) {
@@ -100,6 +101,7 @@ export function ExplainPanel({
       for await (const chunk of streamChat({
         apiKey: settings.apiKey,
         model: settings.model,
+        reasoningEffort: settings.reasoningEffort,
         messages,
         signal: controller.signal,
       })) {

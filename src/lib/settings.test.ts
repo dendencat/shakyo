@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_MODEL,
+  DEFAULT_REASONING_EFFORT,
   isSettingsStorageKey,
   KEY_DRAFT,
   KEY_EDITOR_LANG,
@@ -15,30 +16,52 @@ describe('settings', () => {
 
   describe('loadSettings', () => {
     it('未保存の場合はデフォルト値を返す', () => {
-      expect(loadSettings()).toEqual({ apiKey: '', model: DEFAULT_MODEL })
+      expect(loadSettings()).toEqual({
+        apiKey: '',
+        model: DEFAULT_MODEL,
+        reasoningEffort: DEFAULT_REASONING_EFFORT,
+      })
     })
 
     it('保存済みの値を読み込む', () => {
       localStorage.setItem('shakyo.openai.apiKey', 'sk-test123')
       localStorage.setItem('shakyo.openai.model', 'gpt-5.4')
-      expect(loadSettings()).toEqual({ apiKey: 'sk-test123', model: 'gpt-5.4' })
+      localStorage.setItem('shakyo.openai.reasoningEffort', 'high')
+      expect(loadSettings()).toEqual({
+        apiKey: 'sk-test123',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
+      })
+    })
+
+    it('reasoningEffortが不正な値の場合はminimalにフォールバックする', () => {
+      localStorage.setItem('shakyo.openai.reasoningEffort', 'invalid-value')
+      expect(loadSettings().reasoningEffort).toBe('minimal')
     })
   })
 
   describe('saveSettings', () => {
     it('設定値を保存し、再読込で同じ値が返る', () => {
-      saveSettings({ apiKey: 'sk-abc', model: 'gpt-5.4-nano' })
-      expect(loadSettings()).toEqual({ apiKey: 'sk-abc', model: 'gpt-5.4-nano' })
+      saveSettings({ apiKey: 'sk-abc', model: 'gpt-5.4-nano', reasoningEffort: 'low' })
+      expect(loadSettings()).toEqual({ apiKey: 'sk-abc', model: 'gpt-5.4-nano', reasoningEffort: 'low' })
     })
 
     it('modelが空文字の場合はデフォルトモデルを保存する', () => {
-      saveSettings({ apiKey: 'sk-abc', model: '' })
-      expect(loadSettings()).toEqual({ apiKey: 'sk-abc', model: DEFAULT_MODEL })
+      saveSettings({ apiKey: 'sk-abc', model: '', reasoningEffort: DEFAULT_REASONING_EFFORT })
+      expect(loadSettings()).toEqual({
+        apiKey: 'sk-abc',
+        model: DEFAULT_MODEL,
+        reasoningEffort: DEFAULT_REASONING_EFFORT,
+      })
     })
 
     it('apiKeyが空文字でも保存できる', () => {
-      saveSettings({ apiKey: '', model: 'gpt-5.4-nano' })
-      expect(loadSettings()).toEqual({ apiKey: '', model: 'gpt-5.4-nano' })
+      saveSettings({ apiKey: '', model: 'gpt-5.4-nano', reasoningEffort: DEFAULT_REASONING_EFFORT })
+      expect(loadSettings()).toEqual({
+        apiKey: '',
+        model: 'gpt-5.4-nano',
+        reasoningEffort: DEFAULT_REASONING_EFFORT,
+      })
     })
   })
 
@@ -68,6 +91,10 @@ describe('settings', () => {
 
     it('無関係な任意の文字列の場合はfalseを返す', () => {
       expect(isSettingsStorageKey('some.unrelated.key')).toBe(false)
+    })
+
+    it('解説の深さのキーの場合はtrueを返す', () => {
+      expect(isSettingsStorageKey('shakyo.openai.reasoningEffort')).toBe(true)
     })
   })
 })

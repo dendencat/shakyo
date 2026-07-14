@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildExplanationMessages, streamChat, streamExplanation } from './openai'
+import {
+  buildExplanationMessages,
+  resetUnsupportedModelsForTest,
+  streamChat,
+  streamExplanation,
+} from './openai'
+
+// unsupportedReasoningEffortModelsのメモ化はモジュールレベルの状態のため、テスト間で必ずリセットする
+afterEach(() => {
+  resetUnsupportedModelsForTest()
+})
 
 function sseStreamFromChunks(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
@@ -339,5 +349,117 @@ describe('chat messages', () => {
 
     expect(JSON.parse(init.body as string).messages).toEqual(messages)
     expect(result).toBe('回答')
+  })
+})
+
+describe('reasoning_effort', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('デフォルトではreasoning_effort: minimalをrequest bodyに含める', async () => {
+    const stream = sseStreamFromChunks([
+      'data: {"choices":[{"delta":{"content":"回答"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(stream))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await collect(streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' }))
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+
+    expect(JSON.parse(init.body as string).reasoning_effort).toBe('minimal')
+  })
+
+  it('reasoningEffortを指定するとrequest bodyに反映される', async () => {
+    const stream = sseStreamFromChunks([
+      'data: {"choices":[{"delta":{"content":"回答"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(stream))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await collect(
+      streamExplanation({
+        apiKey: 'sk-test',
+        model: 'gpt-5.4-mini',
+        code: 'x',
+        reasoningEffort: 'medium',
+      }),
+    )
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+
+    expect(JSON.parse(init.body as string).reasoning_effort).toBe('medium')
+  })
+
+  it('reasoning_effort非対応(400)の場合はパラメータなしで1回だけ自動リトライして成功する', async () => {
+    const errorResponse = new Response(
+      JSON.stringify({ error: { code: 'unsupported_parameter', param: 'reasoning_effort' } }),
+      { status: 400 },
+    )
+    const stream = sseStreamFromChunks([
+      'data: {"choices":[{"delta":{"content":"回答"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(errorResponse)
+      .mockResolvedValueOnce(okResponse(stream))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await collect(
+      streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' }),
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const secondInit = fetchMock.mock.calls[1][1] as RequestInit
+    expect(JSON.parse(secondInit.body as string)).not.toHaveProperty('reasoning_effort')
+    expect(result).toBe('回答')
+  })
+
+  it('非対応と判明したモデルは次回以降パラメータなしで最初から送信する(メモ化)', async () => {
+    const errorResponse = new Response(
+      JSON.stringify({ error: { code: 'unsupported_parameter', param: 'reasoning_effort' } }),
+      { status: 400 },
+    )
+    const stream1 = sseStreamFromChunks([
+      'data: {"choices":[{"delta":{"content":"回答1"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const stream2 = sseStreamFromChunks([
+      'data: {"choices":[{"delta":{"content":"回答2"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(errorResponse)
+      .mockResolvedValueOnce(okResponse(stream1))
+      .mockResolvedValueOnce(okResponse(stream2))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await collect(streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' }))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    const result2 = await collect(
+      streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'y' }),
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const thirdInit = fetchMock.mock.calls[2][1] as RequestInit
+    expect(JSON.parse(thirdInit.body as string)).not.toHaveProperty('reasoning_effort')
+    expect(result2).toBe('回答2')
+  })
+
+  it('reasoning_effort以外の理由による400はリトライせずエラーを投げる', async () => {
+    const errorResponse = new Response(
+      JSON.stringify({ error: { code: 'context_length_exceeded', message: '長すぎます' } }),
+      { status: 400 },
+    )
+    const fetchMock = vi.fn().mockResolvedValue(errorResponse)
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      collect(streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' })),
+    ).rejects.toThrow('長すぎます')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

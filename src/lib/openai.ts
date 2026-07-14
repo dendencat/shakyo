@@ -1,7 +1,17 @@
+import { DEFAULT_REASONING_EFFORT, type ReasoningEffort } from './settings'
+
 const ENDPOINT = 'https://api.openai.com/v1/chat/completions'
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000
 const DEFAULT_IDLE_TIMEOUT_MS = 60_000
+
+// reasoning_effortパラメータを拒否したモデル名を記録する(セッション内のみ、localStorageには保存しない)。
+// 一度400で拒否されたモデルは、以降の呼び出しで最初からパラメータなしで送信し、無駄なリトライを避ける。
+const unsupportedReasoningEffortModels = new Set<string>()
+
+export function resetUnsupportedModelsForTest(): void {
+  unsupportedReasoningEffortModels.clear()
+}
 
 const SYSTEM_PROMPT =
   'あなたはプログラミング学習者に寄り添う丁寧な講師です。' +
@@ -31,6 +41,7 @@ export async function* streamChat(options: {
   signal?: AbortSignal
   connectTimeoutMs?: number
   idleTimeoutMs?: number
+  reasoningEffort?: ReasoningEffort
 }): AsyncGenerator<string> {
   const {
     apiKey,
@@ -39,6 +50,7 @@ export async function* streamChat(options: {
     signal,
     connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
     idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
+    reasoningEffort = DEFAULT_REASONING_EFFORT,
   } = options
 
   const timeoutCtrl = new AbortController()
@@ -50,35 +62,61 @@ export async function* streamChat(options: {
   // アイドルタイマー: read()呼び出しごとに張り直すチャンク間無応答の上限
   let idleTimer: ReturnType<typeof setTimeout> | undefined
 
-  try {
+  // DEV限定の簡易計測: fetch開始からの経過時間をコンソールに出す(本番ビルドには出力しない)
+  const perfStart = import.meta.env.DEV ? performance.now() : 0
+  const logTiming = (label: string) => {
+    if (import.meta.env.DEV) {
+      console.debug(`[explain] ${label}: ${Math.round(performance.now() - perfStart)}ms`)
+    }
+  }
+
+  // fetchの実行とタイマーの張り直しをまとめたヘルパー。400フォールバック時の再送でも使い回す。
+  const doFetch = async (withReasoningEffort: boolean): Promise<Response> => {
     connectTimer = setTimeout(() => {
       timeoutKind = 'connect'
       timeoutCtrl.abort()
     }, connectTimeoutMs)
-
-    let res: Response
     try {
-      res = await fetch(ENDPOINT, {
+      return await fetch(ENDPOINT, {
         method: 'POST',
         signal: fetchSignal,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model,
-          stream: true,
-          messages,
-        }),
+        body: JSON.stringify(
+          buildRequestBody(model, messages, withReasoningEffort ? reasoningEffort : undefined),
+        ),
       })
     } catch (err) {
       throw translateStreamError(err, { signal, timeoutKind, connectTimeoutMs, idleTimeoutMs })
     } finally {
       clearTimeout(connectTimer)
     }
+  }
+
+  try {
+    let useReasoningEffort = !unsupportedReasoningEffortModels.has(model)
+    let res = await doFetch(useReasoningEffort)
+    logTiming('headers')
+
+    let errorBody: unknown
+    if (!res.ok) {
+      errorBody = await readErrorBody(res)
+      if (useReasoningEffort && res.status === 400 && isUnsupportedReasoningEffortError(errorBody)) {
+        unsupportedReasoningEffortModels.add(model)
+        if (import.meta.env.DEV) {
+          console.debug(`[explain] reasoning_effort未対応のためパラメータなしで再試行します: ${model}`)
+        }
+        useReasoningEffort = false
+        res = await doFetch(false)
+        logTiming('headers (retry)')
+        errorBody = res.ok ? undefined : await readErrorBody(res)
+      }
+    }
 
     if (!res.ok) {
-      throw new Error(await errorMessage(res))
+      throw new Error(errorMessage(res.status, errorBody))
     }
     if (!res.body) {
       throw new Error('APIから応答ストリームを受け取れませんでした。')
@@ -87,6 +125,7 @@ export async function* streamChat(options: {
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let firstTokenLogged = false
     while (true) {
       idleTimer = setTimeout(() => {
         timeoutKind = 'idle'
@@ -115,7 +154,13 @@ export async function* streamChat(options: {
         try {
           const json = JSON.parse(payload)
           const delta: string | undefined = json.choices?.[0]?.delta?.content
-          if (delta) yield delta
+          if (delta) {
+            if (!firstTokenLogged) {
+              logTiming('first-token')
+              firstTokenLogged = true
+            }
+            yield delta
+          }
         } catch {
           // 不完全なJSON断片は無視する(次のチャンクで完結する)
         }
@@ -136,9 +181,36 @@ export async function* streamExplanation(options: {
   signal?: AbortSignal
   connectTimeoutMs?: number
   idleTimeoutMs?: number
+  reasoningEffort?: ReasoningEffort
 }): AsyncGenerator<string> {
   const { code, ...rest } = options
   yield* streamChat({ ...rest, messages: buildExplanationMessages(code) })
+}
+
+/**
+ * chat/completionsへ送るrequest bodyを組み立てる。
+ * reasoningEffortがundefinedの場合はreasoning_effortを含めない(非対応モデル向けフォールバック用)。
+ */
+function buildRequestBody(
+  model: string,
+  messages: ChatMessage[],
+  reasoningEffort: ReasoningEffort | undefined,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { model, stream: true, messages }
+  if (reasoningEffort !== undefined) {
+    body.reasoning_effort = reasoningEffort
+  }
+  return body
+}
+
+/**
+ * 400エラーがreasoning_effort非対応によるものかを判定する。
+ */
+function isUnsupportedReasoningEffortError(body: unknown): boolean {
+  const error = (body as { error?: { param?: string; code?: string } } | undefined)?.error
+  if (!error) return false
+  if (error.param === 'reasoning_effort') return true
+  return error.code === 'unsupported_parameter' || error.code === 'unsupported_value'
 }
 
 /**
@@ -195,16 +267,22 @@ function translateStreamError(
   return err
 }
 
-async function errorMessage(res: Response): Promise<string> {
-  let apiMessage = ''
+/**
+ * エラーレスポンスのbodyを一度だけ読み取る。JSONでない場合はundefinedを返す。
+ */
+async function readErrorBody(res: Response): Promise<unknown> {
   try {
-    const body = await res.json()
-    apiMessage = body?.error?.message ?? ''
+    return await res.json()
   } catch {
     // JSONでないエラーレスポンスはステータスコードのみで案内する
+    return undefined
   }
+}
+
+function errorMessage(status: number, body: unknown): string {
+  const apiMessage = (body as { error?: { message?: string } } | undefined)?.error?.message ?? ''
   const suffix = apiMessage ? `(${apiMessage})` : ''
-  switch (res.status) {
+  switch (status) {
     case 401:
       return `APIキーが無効です。設定画面でOpenAI APIキーを確認してください。${suffix}`
     case 404:
@@ -212,6 +290,6 @@ async function errorMessage(res: Response): Promise<string> {
     case 429:
       return `利用制限に達しました。しばらく待ってから再試行してください。${suffix}`
     default:
-      return `OpenAI APIエラー(HTTP ${res.status})${suffix}`
+      return `OpenAI APIエラー(HTTP ${status})${suffix}`
   }
 }
