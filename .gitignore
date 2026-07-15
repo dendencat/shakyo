@@ -25,3 +25,7 @@ dist-ssr
 
 # リリース成果物
 release
+
+# Tauri
+src-tauri/target
+src-tauri/gen/schemas
