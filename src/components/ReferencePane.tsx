@@ -18,6 +18,7 @@ import {
 } from '../lib/webReference'
 import type { WebBookmark } from '../lib/webReference'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { openExternal } from '../lib/openExternal'
 
 type ReferenceContent =
   | { kind: 'text'; name: string; text: string; lang: LangId | null }
@@ -412,7 +413,7 @@ export function ReferencePane({
               */}
               <p className="hint">
                 ページが表示されない場合、そのサイトは埋め込み(iframe)を拒否しています。
-                <button className="link" onClick={() => window.open(loadedUrl, '_blank', 'noopener')}>
+                <button className="link" onClick={() => { void openExternal(loadedUrl) }}>
                   別ウィンドウで開く
                 </button>
                 で開き、画面を左右に並べてご利用ください。
