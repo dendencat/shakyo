@@ -21,7 +21,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://api.openai.com; worker-src 'self' blob:; frame-src https: http:; object-src 'none'; base-uri 'self'; form-action 'self'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://api.openai.com; worker-src 'self' blob:; frame-src https: http:; object-src 'none'; base-uri 'self'; form-action 'self'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420 https://api.openai.com; worker-src 'self' blob:; frame-src https: http:; object-src 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "bundle": {

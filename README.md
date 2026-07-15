@@ -84,7 +84,7 @@ npm run tauri build
 
 生成されたインストーラは `src-tauri/target/release/bundle/` 以下に出力されます。
 
-**リリース**: `app-v*` 形式のタグ(例 `app-v1.2.0`)をpushすると、GitHub Actionsのワークフロー(`.github/workflows/desktop.yml`)がWindows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)のインストーラをビルドし、draft releaseに添付します。内容を確認してから公開してください。
+**リリース**: `app-v*` 形式のタグ(例 `app-v1.2.0`)をpushすると、GitHub Actionsのワークフロー(`.github/workflows/desktop.yml`)がWindows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)のインストーラをビルドし、draft releaseに添付します。内容を確認してから公開してください。バージョンを上げる際は、アプリ表示バージョン(`tauri.conf.json` が参照)のもとになる `package.json` と、`src-tauri/Cargo.toml` の両方の `version` を更新してください。
 
 **注記**: 配布バイナリはコード署名を行っていません。そのため、macOSでは Gatekeeper の警告が表示されます(右クリック→「開く」を選ぶか、`xattr -dr com.apple.quarantine` で解除してください)。Windowsでは SmartScreen の警告が表示されます。
 
