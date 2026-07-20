@@ -14,12 +14,14 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: バージョン形式の検証
         run: |
-          if [[ ! "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::version は v1.2.3 形式で指定してください: ${{ inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf '::error::version は v1.2.3 形式で指定してください: %s\n' "$VERSION"
             exit 1
           fi
       - name: 既存タグ・リリースの確認
@@ -27,25 +29,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # 誤って既存リリースを上書きしないよう、同名があれば失敗させる
-          if gh release view "${{ inputs.version }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::リリース ${{ inputs.version }} は既に存在します"
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            printf '::error::リリース %s は既に存在します\n' "$VERSION"
             exit 1
           fi
       - name: リリース作成
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES_FILE=".github/release-notes/${{ inputs.version }}.md"
+          NOTES_FILE=".github/release-notes/$VERSION.md"
           if [[ -f "$NOTES_FILE" ]]; then
-            gh release create "${{ inputs.version }}" \
+            gh release create "$VERSION" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "${{ inputs.version }}" \
+              --title "$VERSION" \
               --notes-file "$NOTES_FILE"
           else
-            gh release create "${{ inputs.version }}" \
+            gh release create "$VERSION" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "${{ inputs.version }}" \
+              --title "$VERSION" \
               --generate-notes
           fi

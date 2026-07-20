@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { buildExplanationMessages, streamChat, streamExplanation } from '../lib/openai'
 import { loadSettings } from '../lib/settings'
+import { SafeMarkdown } from './SafeMarkdown'
 
 export function ExplainPanel({
   getCode,
@@ -207,12 +206,12 @@ export function ExplainPanel({
         )}
         {(text || running) && (
           <div className="explain-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+            <SafeMarkdown>{text}</SafeMarkdown>
             {running && followups.length === 0 && <span className="cursor">▌</span>}
             {followups.map((followup, index) => (
               <div key={index}>
                 <div className="followup-question">{followup.question}</div>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{followup.answer}</ReactMarkdown>
+                <SafeMarkdown>{followup.answer}</SafeMarkdown>
                 {running && index === followups.length - 1 && <span className="cursor">▌</span>}
               </div>
             ))}

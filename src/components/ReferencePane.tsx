@@ -6,6 +6,7 @@ import type { LangId } from '../lib/langs'
 import { CODE_SAMPLES } from '../lib/samples'
 import { loadPasteReference, savePasteReference } from '../lib/pasteReference'
 import type { PasteReference } from '../lib/pasteReference'
+import { readTextReferenceFile } from '../lib/referenceFile'
 import {
   addWebBookmark,
   addWebHistory,
@@ -125,7 +126,7 @@ export function ReferencePane({
         setContent({
           kind: 'text',
           name: file.name,
-          text: await file.text(),
+          text: await readTextReferenceFile(file),
           lang: langIdFromFilename(file.name),
         })
       }
