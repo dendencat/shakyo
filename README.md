@@ -50,8 +50,8 @@ npm run dev
 
 ## ロードマップ
 
-- **Tauri化**: デスクトップアプリとして配布。内蔵webviewによりWebページ参照のiframe制約を解消
 - GitHub Pages への自動デプロイ
+- Web参照タブの内蔵webview化(iframe埋め込みを拒否するサイトの制約解消。Tauriの内蔵webviewでも別ウィンドウ表示に留まっており未解決)
 
 ## 開発
 
@@ -63,5 +63,29 @@ npm run build     # 型チェック+本番ビルド
 ```
 
 Pull Request と main への push では GitHub Actions で lint / test / build が自動実行されます。
+
+## デスクトップアプリ(Tauri)
+
+Tauri v2により、Webアプリをそのままデスクトップアプリとしても配布できます。
+
+**前提**: Rust stableツールチェーンが必要です。Linuxでは `libwebkit2gtk-4.1-dev` `libgtk-3-dev` などのシステムパッケージが別途必要になります。詳細は [Tauri公式のPrerequisitesページ](https://v2.tauri.app/start/prerequisites/) を参照してください。
+
+**開発**:
+
+```bash
+npm run tauri dev
+```
+
+**ビルド**:
+
+```bash
+npm run tauri build
+```
+
+生成されたインストーラは `src-tauri/target/release/bundle/` 以下に出力されます。
+
+**リリース**: `app-v*` 形式のタグ(例 `app-v1.2.0`)をpushすると、GitHub Actionsのワークフロー(`.github/workflows/desktop.yml`)がWindows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)のインストーラをビルドし、draft releaseに添付します。内容を確認してから公開してください。バージョンを上げる際は、アプリ表示バージョン(`tauri.conf.json` が参照)のもとになる `package.json` と、`src-tauri/Cargo.toml` の両方の `version` を更新してください。
+
+**注記**: 配布バイナリはコード署名を行っていません。そのため、macOSでは Gatekeeper の警告が表示されます(右クリック→「開く」を選ぶか、`xattr -dr com.apple.quarantine` で解除してください)。Windowsでは SmartScreen の警告が表示されます。
 
 実装計画は [PLAN.md](PLAN.md)、開発規約とAIエージェント運用は [AGENTS.md](AGENTS.md) を参照してください。
