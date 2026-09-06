@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactCodeMirrorRef } from '@uiw/react-codemirror'
-import { SplitPane } from './components/SplitPane'
+import { WorkspaceLayout } from './components/WorkspaceLayout'
+import { LayoutDialog } from './components/LayoutDialog'
 import { ReferencePane } from './components/ReferencePane'
 import { ShakyoEditor } from './components/ShakyoEditor'
 import { ExplainPanel } from './components/ExplainPanel'
 import { SettingsDialog } from './components/SettingsDialog'
 import { loadThemePref, nextThemePref, resolveTheme, saveThemePref } from './lib/theme'
 import type { ThemePref } from './lib/theme'
+import { loadLayout, saveLayout } from './lib/layout'
+import type { LayoutConfig } from './lib/layout'
 import './App.css'
 
 const THEME_LABELS: Record<ThemePref, string> = {
@@ -18,6 +21,9 @@ const THEME_LABELS: Record<ThemePref, string> = {
 export default function App() {
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [layoutOpen, setLayoutOpen] = useState(false)
+  const [layout, setLayout] = useState(loadLayout)
+  const [layoutError, setLayoutError] = useState<string | null>(null)
   const [reference, setReference] = useState<{ name: string; text: string } | null>(null)
   const [themePref, setThemePref] = useState<ThemePref>(loadThemePref)
   const [systemPrefersDark, setSystemPrefersDark] = useState(
@@ -53,6 +59,17 @@ export default function App() {
     return { code: view.state.doc.toString(), isSelection: false }
   }, [])
 
+  const changeLayout = useCallback((next: LayoutConfig, persist: boolean) => {
+    setLayout(next)
+    if (!persist) return
+    try {
+      saveLayout(next)
+      setLayoutError(null)
+    } catch {
+      setLayoutError('レイアウトを保存できませんでした。現在の配置は使えますが、次回起動時に復元できない場合があります。')
+    }
+  }, [])
+
   return (
     <div className="app">
       <header className="app-header">
@@ -61,31 +78,33 @@ export default function App() {
         <button className="theme-toggle-button" onClick={toggleTheme}>
           {THEME_LABELS[themePref]}
         </button>
+        <button onClick={() => setLayoutOpen(true)}>レイアウト</button>
         <button className="settings-button" onClick={() => setSettingsOpen(true)}>
           設定
         </button>
       </header>
+      {layoutError && <p className="error-text" role="status">{layoutError}</p>}
       <main className="app-main">
-        <SplitPane
-          storageKey="shakyo.split.main"
-          left={<ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} />}
-          right={
-            <SplitPane
-              direction="vertical"
-              storageKey="shakyo.split.right"
-              left={
-                <ShakyoEditor
-                  editorRef={editorRef}
-                  referenceText={reference?.text ?? null}
-                  referenceName={reference?.name ?? null}
-                  resolvedTheme={resolved}
-                />
-              }
-              right={<ExplainPanel getCode={getCode} onOpenSettings={() => setSettingsOpen(true)} />}
-            />
-          }
+        <WorkspaceLayout
+          layout={layout}
+          onChange={changeLayout}
+          panes={{
+            reference: <ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} />,
+            editor: (
+              <ShakyoEditor
+                editorRef={editorRef}
+                referenceText={reference?.text ?? null}
+                referenceName={reference?.name ?? null}
+                resolvedTheme={resolved}
+              />
+            ),
+            explain: <ExplainPanel getCode={getCode} onOpenSettings={() => setSettingsOpen(true)} />,
+          }}
         />
       </main>
+      {layoutOpen && (
+        <LayoutDialog layout={layout} onApply={(next) => changeLayout(next, true)} onClose={() => setLayoutOpen(false)} />
+      )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </div>
   )
