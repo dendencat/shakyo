@@ -6,6 +6,7 @@
 
 .app-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 12px;
   padding: 10px 16px;
@@ -28,48 +29,52 @@
 .app-main {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow: auto;
 }
 
 /* --- 分割ビュー --- */
 
-.split-pane {
-  display: flex;
+.workspace-layout {
+  display: grid;
   height: 100%;
+  min-height: 360px;
+  min-width: 320px;
 }
 
-.split-pane.vertical {
-  flex-direction: column;
-}
-
-.split-pane-left {
-  flex-shrink: 0;
+.workspace-pane {
   min-width: 0;
   min-height: 0;
-  height: 100%;
+  overflow: auto;
 }
 
-.split-pane-right {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-}
-
-.split-pane-divider {
-  width: 5px;
-  cursor: col-resize;
+.workspace-divider {
   background: var(--border);
-  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
 }
 
-.split-pane-divider:hover {
-  background: var(--accent-border);
+.workspace-divider-x {
+  cursor: col-resize;
 }
 
-.split-pane.vertical > .split-pane-divider {
-  height: 5px;
-  width: auto;
+.workspace-divider-y {
   cursor: row-resize;
+}
+
+.workspace-divider:hover,
+.workspace-divider:focus-visible {
+  background: var(--accent-border);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.workspace-resize-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  user-select: none;
+  touch-action: none;
 }
 
 /* --- ペイン共通 --- */
@@ -94,6 +99,7 @@
   border-bottom: 1px solid var(--border);
   background: var(--bg-sub);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .pane-header h2 {
@@ -106,16 +112,26 @@
 
 .pane-body {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.toolbar select {
+  max-width: 100%;
+}
+
+.toolbar label {
+  min-width: 0;
 }
 
 .icon-button {
@@ -156,6 +172,7 @@
 
 .tab-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
@@ -204,7 +221,7 @@
 
 .reference-content {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   overflow: auto;
 }
 
@@ -293,6 +310,7 @@
 
 .web-frame {
   flex: 1;
+  min-height: 120px;
   border: none;
   width: 100%;
   /* iframe内は一般的なWebページ(白背景前提)を表示するため、テーマに関わらず白のまま固定する */
@@ -362,6 +380,7 @@
 
 .status-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   padding: 4px 12px;
   border-top: 1px solid var(--border);
@@ -374,7 +393,6 @@
 /* --- 解説パネル --- */
 
 .explain-panel {
-  border-top: 1px solid var(--border);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -382,7 +400,7 @@
 
 .explain-body {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   overflow: auto;
 }
 
@@ -483,9 +501,11 @@
 
 .followup-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   border-top: 1px solid var(--border);
   padding: 8px 12px;
+  flex-shrink: 0;
 }
 
 .followup-form input {
