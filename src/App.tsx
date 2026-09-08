@@ -89,7 +89,7 @@ export default function App() {
           layout={layout}
           onChange={changeLayout}
           panes={{
-            reference: <ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} />,
+            reference: <ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} obscured={settingsOpen || layoutOpen} />,
             editor: (
               <ShakyoEditor
                 editorRef={editorRef}
