@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "apiVersion": 1,
+  "id": "example.text-tools",
+  "name": "テキスト加工（サンプル）",
+  "version": "1.0.0",
+  "entry": "main.js",
+  "permissions": { "editor": ["read", "write"], "reference": [], "network": [] },
+  "contributes": {
+    "commands": [{ "id": "example.text-tools.uppercase", "title": "選択範囲または全文を大文字にする" }],
+    "settings": { "confirm": { "title": "実行前に確認する", "type": "boolean", "default": true } }
+  }
+}
