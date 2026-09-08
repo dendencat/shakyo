@@ -325,6 +325,14 @@
   position: relative;
 }
 
+.extensions-modal { width: min(760px, 92vw); max-height: 85vh; overflow: auto; }
+.extension-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 12px 0; overflow-wrap: anywhere; }
+.extension-card h3 { margin: 0 0 8px; }
+.extension-card small { font-size: 12px; }
+.extension-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.extension-consent { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0; }
+.extension-message { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
+
 .native-web-error {
   padding: 12px;
   color: var(--text);

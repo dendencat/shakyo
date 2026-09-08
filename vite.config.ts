@@ -8,6 +8,12 @@ const tauriPlatform = process.env.TAURI_ENV_PLATFORM
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
+  worker: { format: 'es' },
+  preview: {
+    headers: {
+      'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self' https:; worker-src 'self' blob:; frame-src https: http:; object-src 'none'; base-uri 'self'; form-action 'self'",
+    },
+  },
   envPrefix: ['VITE_', 'TAURI_ENV_'],
   server: {
     port: 1420,

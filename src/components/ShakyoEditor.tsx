@@ -9,6 +9,7 @@ import { accuracyPercent, progressPercent, wordsPerMinute } from '../lib/stats'
 import { loadProgress, saveProgress } from '../lib/progress'
 import { diffAgainstReference, normalizeReference } from '../lib/diff'
 import { SaveLoadDialog } from './SaveLoadDialog'
+import { extensionRevision } from '../extensions/editorAdapter'
 
 function initialLang(): LangId {
   const saved = localStorage.getItem(KEY_EDITOR_LANG)
@@ -21,11 +22,17 @@ export function ShakyoEditor({
   referenceText,
   referenceName,
   resolvedTheme,
+  onExtensionChange,
+  onLanguageChange,
+  allowReferenceRestore = true,
 }: {
   editorRef: React.RefObject<ReactCodeMirrorRef | null>
   referenceText: string | null
   referenceName: string | null
   resolvedTheme: 'light' | 'dark'
+  onExtensionChange?: (revision: number) => void
+  onLanguageChange?: (language: string) => void
+  allowReferenceRestore?: boolean
 }) {
   const [code, setCode] = useState(() => localStorage.getItem(KEY_DRAFT) ?? '')
   const [lang, setLang] = useState<LangId>(initialLang)
@@ -40,9 +47,10 @@ export function ShakyoEditor({
 
   useEffect(() => {
     localStorage.setItem(KEY_EDITOR_LANG, lang)
-  }, [lang])
+    onLanguageChange?.(lang)
+  }, [lang, onLanguageChange])
 
-  const extensions = useMemo(() => [...languageExtension(lang), diffHighlight], [lang])
+  const extensions = useMemo(() => [...languageExtension(lang), diffHighlight, extensionRevision], [lang])
 
   const normalizedReferenceLength = useMemo(
     () => (referenceText != null ? normalizeReference(referenceText).length : null),
@@ -84,7 +92,7 @@ export function ShakyoEditor({
     const prevName = prevReferenceNameRef.current
     prevReferenceNameRef.current = referenceName
 
-    if (referenceName == null || referenceName === prevName) return
+    if (!allowReferenceRestore || referenceName == null || referenceName === prevName) return
 
     const entry = loadProgress(referenceName)
     if (entry == null) return
@@ -113,10 +121,11 @@ export function ShakyoEditor({
     ) {
       restore()
     }
-  }, [referenceName, code, checkEnabled, referenceText])
+  }, [referenceName, code, checkEnabled, referenceText, allowReferenceRestore])
 
   const onChange = (value: string, viewUpdate: ViewUpdate) => {
     setCode(value)
+    onExtensionChange?.(viewUpdate.state.field(extensionRevision))
 
     const result = getDiffResult(viewUpdate.state)
     const acc = result != null ? accuracyPercent(result, value.length) : null
@@ -125,7 +134,7 @@ export function ShakyoEditor({
     window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => {
       localStorage.setItem(KEY_DRAFT, value)
-      if (referenceName && value.length > 0) {
+      if (allowReferenceRestore && referenceName && value.length > 0) {
         const progressPct =
           normalizedReferenceLength != null
             ? progressPercent(value.length, normalizedReferenceLength)

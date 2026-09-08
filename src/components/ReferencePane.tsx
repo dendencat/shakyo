@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { PdfViewer } from './PdfViewer'
 import { LANGUAGE_OPTIONS, languageExtension, langIdFromFilename } from '../lib/langs'
@@ -21,9 +21,10 @@ import type { WebBookmark } from '../lib/webReference'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { isTauri, openExternal } from '../lib/openExternal'
 import { NativeWebReference } from './NativeWebReference'
+import type { ReferencePort } from '../extensions/referenceAdapter'
 
 type ReferenceContent =
-  | { kind: 'text'; name: string; text: string; lang: LangId | null }
+  | { kind: 'text'; name: string; text: string; lang: LangId | null; fromExtension?: boolean }
   | { kind: 'pdf'; name: string; data: ArrayBuffer }
 
 type Tab = 'file' | 'paste' | 'web'
@@ -83,10 +84,14 @@ export function ReferencePane({
   onReferenceChange,
   resolvedTheme,
   obscured = false,
+  extensionPort,
+  onExtensionChange,
 }: {
-  onReferenceChange?: (ref: { name: string; text: string } | null) => void
+  onReferenceChange?: (ref: { name: string; text: string; fromExtension?: boolean } | null) => void
   resolvedTheme: 'light' | 'dark'
   obscured?: boolean
+  extensionPort?: React.RefObject<ReferencePort | null>
+  onExtensionChange?: () => void
 }) {
   const [tab, setTab] = useState<Tab>('file')
   const [content, setContent] = useState<ReferenceContent | null>(null)
@@ -114,7 +119,7 @@ export function ReferencePane({
   useEffect(() => {
     onReferenceChange?.(
       tab === 'file' && content?.kind === 'text'
-        ? { name: content.name, text: content.text }
+        ? { name: content.name, text: content.text, ...(content.fromExtension ? { fromExtension: true } : {}) }
         : tab === 'paste' && !pasteEditing && pasteRef != null
           ? { name: '貼り付けテキスト', text: pasteRef.text }
         : null,
@@ -149,6 +154,27 @@ export function ReferencePane({
     setBookmarksOpen(false)
     setHistoryOpen(false)
   }
+
+  useLayoutEffect(() => {
+    if (!extensionPort) return
+    extensionPort.current = {
+      getCurrent: () => {
+        if (tab === 'web') return loadedUrl ? { kind: 'web', url: loadedUrl } : null
+        if (tab === 'paste') return pasteRef && !pasteEditing ? { kind: 'text', name: '貼り付けテキスト', text: pasteRef.text, language: pasteRef.lang } : null
+        if (content?.kind === 'pdf') return { kind: 'pdf', name: content.name }
+        return content ? { kind: 'text', name: content.name, text: content.text, language: content.lang } : null
+      },
+      openText: input => {
+        const lang = LANGUAGE_OPTIONS.some(o => o.id === input.language) ? input.language as LangId : null
+        setContent({ kind: 'text', name: input.name, text: input.text, lang, fromExtension: true })
+        setFileError(null)
+        setTab('file')
+      },
+      openUrl: url => { loadWeb(url); setTab('web') },
+    }
+    return () => { extensionPort.current = null }
+  })
+  useEffect(() => { onExtensionChange?.() }, [tab, content, loadedUrl, pasteRef, pasteEditing, onExtensionChange])
 
   const closeBookmarkModal = () => {
     setBookmarkModal(null)
