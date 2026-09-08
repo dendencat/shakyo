@@ -19,7 +19,8 @@ import {
 } from '../lib/webReference'
 import type { WebBookmark } from '../lib/webReference'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { openExternal } from '../lib/openExternal'
+import { isTauri, openExternal } from '../lib/openExternal'
+import { NativeWebReference } from './NativeWebReference'
 
 type ReferenceContent =
   | { kind: 'text'; name: string; text: string; lang: LangId | null }
@@ -81,9 +82,11 @@ function BookmarkModal({
 export function ReferencePane({
   onReferenceChange,
   resolvedTheme,
+  obscured = false,
 }: {
   onReferenceChange?: (ref: { name: string; text: string } | null) => void
   resolvedTheme: 'light' | 'dark'
+  obscured?: boolean
 }) {
   const [tab, setTab] = useState<Tab>('file')
   const [content, setContent] = useState<ReferenceContent | null>(null)
@@ -406,7 +409,16 @@ export function ReferencePane({
             )}
           </section>
           {!bookmarkModal && webError && <p className="error-text">{webError}</p>}
-          {loadedUrl ? (
+          {loadedUrl && isTauri() ? (
+            <>
+              <p className="hint">
+                表示できないページや別画面で開くリンクは、
+                <button className="link" onClick={() => { void openExternal(loadedUrl).catch(() => setWebError('外部ブラウザを開けませんでした。')) }}>外部ブラウザで開く</button>
+                をご利用ください。
+              </p>
+              <NativeWebReference url={loadedUrl} obscured={obscured || !!bookmarkModal} />
+            </>
+          ) : loadedUrl ? (
             <>
               {/*
                 X-Frame-Options/CSPによる埋め込みブロックはJSから確実に検知できないため、
