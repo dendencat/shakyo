@@ -5,7 +5,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(reference_webview::ReferenceState::default())
         .invoke_handler(tauri::generate_handler![
-            reference_webview::sync_reference_webview
+            reference_webview::sync_reference_webview,
+            reference_webview::reference_browser_action
         ])
         .plugin(tauri_plugin_opener::init())
         .run(tauri::generate_context!())

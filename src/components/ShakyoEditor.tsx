@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import type { ReactCodeMirrorRef, ViewUpdate } from '@uiw/react-codemirror'
@@ -19,6 +20,8 @@ function initialLang(): LangId {
 
 export function ShakyoEditor({
   editorRef,
+  sidebarTarget,
+  onOpenFiles,
   referenceText,
   referenceName,
   resolvedTheme,
@@ -26,6 +29,8 @@ export function ShakyoEditor({
   onLanguageChange,
   allowReferenceRestore = true,
 }: {
+  sidebarTarget?: HTMLElement | null
+  onOpenFiles?: () => void
   editorRef: React.RefObject<ReactCodeMirrorRef | null>
   referenceText: string | null
   referenceName: string | null
@@ -171,6 +176,25 @@ export function ShakyoEditor({
       ? wordsPerMinute(code.length, Date.now() - sessionStartRef.current)
       : null
 
+  const saveMenu = <SaveLoadDialog
+          embedded={!!sidebarTarget}
+          code={code}
+          lang={lang}
+          onLoad={(snapshot) => {
+            window.clearTimeout(saveTimer.current)
+            setCode(snapshot.code)
+            localStorage.setItem(KEY_DRAFT, snapshot.code)
+            setLang(snapshot.lang)
+            const loadedAccuracy =
+              checkEnabled && referenceText != null
+                ? accuracyPercent(diffAgainstReference(snapshot.code, referenceText), snapshot.code.length)
+                : null
+            setAccuracy(loadedAccuracy)
+            resetSession()
+          }}
+          onClose={() => setSaveLoadOpen(false)}
+        />
+
   return (
     <>
       <section className="pane editor-pane">
@@ -199,7 +223,7 @@ export function ShakyoEditor({
               />
               正誤判定
             </label>
-            <button onClick={() => setSaveLoadOpen(true)}>保存/読込…</button>
+            <button onClick={() => onOpenFiles ? onOpenFiles() : setSaveLoadOpen(true)}>保存/読込…</button>
             <button onClick={clear}>クリア</button>
           </div>
         </div>
@@ -221,25 +245,7 @@ export function ShakyoEditor({
           <span>進捗: {progress != null ? `${progress}%` : '—'}</span>
         </div>
       </section>
-      {saveLoadOpen && (
-        <SaveLoadDialog
-          code={code}
-          lang={lang}
-          onLoad={(snapshot) => {
-            window.clearTimeout(saveTimer.current)
-            setCode(snapshot.code)
-            localStorage.setItem(KEY_DRAFT, snapshot.code)
-            setLang(snapshot.lang)
-            const loadedAccuracy =
-              checkEnabled && referenceText != null
-                ? accuracyPercent(diffAgainstReference(snapshot.code, referenceText), snapshot.code.length)
-                : null
-            setAccuracy(loadedAccuracy)
-            resetSession()
-          }}
-          onClose={() => setSaveLoadOpen(false)}
-        />
-      )}
+      {sidebarTarget ? createPortal(saveMenu, sidebarTarget) : saveLoadOpen && saveMenu}
     </>
   )
 }

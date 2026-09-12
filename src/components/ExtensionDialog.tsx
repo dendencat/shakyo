@@ -1,3 +1,5 @@
+import { openExternal } from '../lib/openExternal'
+import { EXTENSION_WIKI } from './HelpPanel'
 import { useRef, useState, useSyncExternalStore } from 'react'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import type { ExtensionManager } from '../extensions/manager'
@@ -6,7 +8,7 @@ import type { CheckedPackage } from '../extensions/model'
 import { LIMITS } from '../extensions/model'
 
 const STATUS = { disabled: '無効', inactive: '有効（待機中）', active: '実行中', error: '停止（エラー）', blocked: '再検査・承認が必要' }
-export function ExtensionDialog({ manager, onClose, onRun }: { manager: ExtensionManager; onClose(): void; onRun(id: string, command: string): void }) {
+export function ExtensionDialog({ manager, onClose, onRun, embedded = false }: { embedded?: boolean; manager: ExtensionManager; onClose(): void; onRun(id: string, command: string): void }) {
   const rows = useSyncExternalStore(manager.subscribe, manager.snapshot)
   const [candidate, setCandidate] = useState<{ archive: Uint8Array; checked: CheckedPackage } | null>(null)
   const [approved, setApproved] = useState(false)
@@ -14,7 +16,7 @@ export function ExtensionDialog({ manager, onClose, onRun }: { manager: Extensio
   const [error, setError] = useState('')
   const generation = useRef(0)
   const close = () => { generation.current++; onClose() }
-  const ref = useFocusTrap<HTMLDivElement>(close)
+  const ref = useFocusTrap<HTMLDivElement>(close, !embedded)
   const action = async (fn: () => Promise<void>) => {
     setBusy(true); setError('')
     try { await fn() } catch (e) { setError(e instanceof Error ? e.message : '処理に失敗しました。') }
@@ -32,9 +34,10 @@ export function ExtensionDialog({ manager, onClose, onRun }: { manager: Extensio
   }
   const manifest = candidate?.checked.manifest
   const previous = rows.find(row => row.item.manifest.id === manifest?.id)
-  return <div className="modal-backdrop" onClick={close}>
-    <div className="modal extensions-modal" role="dialog" aria-modal="true" aria-label="拡張機能" ref={ref} onClick={e => e.stopPropagation()}>
+  return <div className={embedded ? undefined : "modal-backdrop"} onClick={embedded ? undefined : close}>
+    <div className={embedded ? "sidebar-panel" : "modal extensions-modal"} role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : true} aria-label="拡張機能" ref={ref} onClick={e => e.stopPropagation()}>
       <h2>拡張機能</h2>
+      <button className="link" onClick={() => void openExternal(EXTENSION_WIKI).catch(() => setError("Wikiを開けませんでした。ヘルプの同梱手順を参照してください。"))}>導入手順（Wiki）</button>
       <p className="hint">拡張は端末ごとに保存されます。検査結果は安全性を保証するものではありません。</p>
       <label className="field">パッケージを検査（.shakyo-ext / ZIP）
         <input type="file" accept=".shakyo-ext,.zip" disabled={busy} onChange={e => { const file = e.target.files?.[0]; if (file) void inspect(file); e.target.value = '' }} />

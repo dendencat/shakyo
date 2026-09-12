@@ -83,3 +83,9 @@ export function measureNativeBounds(element: HTMLElement): NativeBounds | null {
   if (!Number.isFinite(scale) || scale <= 0 || right - left < 1 || bottom - top < 1) return null
   return { x: Math.round((left - offsetX) * scale), y: Math.round((top - offsetY) * scale), width: Math.round((right - left) * scale), height: Math.round((bottom - top) * scale) }
 }
+
+export type NativeLocation = { requestedUrl: string | null; url: string | null }
+export async function nativeBrowserAction(action: 'back' | 'forward' | 'reload' | 'location' | 'navigate', url?: string): Promise<NativeLocation> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke('reference_browser_action', { action, url })
+}

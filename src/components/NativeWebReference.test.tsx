@@ -4,11 +4,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { NativeWebReference } from './NativeWebReference'
 
 const mocks = vi.hoisted(() => ({
-  update: vi.fn(), release: vi.fn(),
+  update: vi.fn(), release: vi.fn(), location: vi.fn(),
   measure: vi.fn(() => ({ x: 10, y: 20, width: 300, height: 200 })),
   error: undefined as ((message: string) => void) | undefined,
 }))
 vi.mock('../lib/nativeReference', () => ({
+  nativeBrowserAction: mocks.location,
   measureNativeBounds: mocks.measure,
   nativeReference: { acquire: (error: (message: string) => void) => {
     mocks.error = error
@@ -104,4 +105,27 @@ it('keeps a rejected localhost request hidden when an obscuring dialog closes', 
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('ローカルアプリのURLは表示できません。')
   expect(mocks.update.mock.calls.slice(failureCallCount).every(([state]) => state.url === url && state.bounds === null)).toBe(true)
   expect(mocks.update).toHaveBeenLastCalledWith({ url, bounds: null })
+})
+
+it('keeps the native child and its history when navigating to a different URL', async () => {
+  await render()
+  const releases = mocks.release.mock.calls.length
+  await render(false, 'https://example.com/next')
+  expect(mocks.release).toHaveBeenCalledTimes(releases)
+  expect(mocks.update).toHaveBeenLastCalledWith({ url: 'https://example.com/next', bounds: mocks.measure() })
+})
+
+it('tracks redirects but ignores locations from an obsolete navigation or an unmounted view', async () => {
+  let finish!: (location: { requestedUrl: string; url: string }) => void
+  mocks.location.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  const report = vi.fn()
+  await act(async () => root.render(<NativeWebReference url="https://a.test/" obscured={false} onLocation={report} />))
+  await act(async () => root.render(<NativeWebReference url="https://b.test/" obscured={false} onLocation={report} />))
+  await act(async () => finish({ requestedUrl: 'https://a.test/', url: 'https://a.test/redirect' }))
+  expect(report).not.toHaveBeenCalled()
+  await act(async () => root.unmount())
+  root = createRoot(container)
+  mocks.location.mockResolvedValue({ requestedUrl: 'https://b.test/', url: 'https://b.test/redirect' })
+  await act(async () => root.render(<NativeWebReference url="https://b.test/" obscured={false} onLocation={report} />))
+  expect(report).toHaveBeenLastCalledWith('https://b.test/redirect')
 })

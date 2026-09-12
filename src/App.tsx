@@ -6,7 +6,7 @@ import { ReferencePane } from './components/ReferencePane'
 import { ShakyoEditor } from './components/ShakyoEditor'
 import { ExplainPanel } from './components/ExplainPanel'
 import { SettingsDialog } from './components/SettingsDialog'
-import { loadThemePref, nextThemePref, resolveTheme, saveThemePref } from './lib/theme'
+import { loadThemePref, resolveTheme, saveThemePref } from './lib/theme'
 import type { ThemePref } from './lib/theme'
 import { loadLayout, saveLayout } from './lib/layout'
 import type { LayoutConfig } from './lib/layout'
@@ -16,6 +16,8 @@ import type { ReferencePort } from './extensions/referenceAdapter'
 import { applyEditorEdits, editorSnapshot } from './extensions/editorAdapter'
 import { ExtensionDialog } from './components/ExtensionDialog'
 import { ExtensionPrompt, type ExtensionPromptRequest } from './components/ExtensionPrompt'
+import { IconButton } from './components/Icon'
+import { HelpPanel } from './components/HelpPanel'
 import './App.css'
 
 const THEME_LABELS: Record<ThemePref, string> = {
@@ -29,13 +31,17 @@ export default function App() {
   const [extensionManager] = useState(() => new ExtensionManager())
   const referencePort = useRef<ReferencePort>(null)
   const editorLanguage = useRef('ts')
-  const [extensionsOpen, setExtensionsOpen] = useState(false)
+  const [sidebar, setSidebar] = useState<'files' | 'extensions' | 'settings' | 'layout' | 'theme' | 'help' | null>(null)
+  const [fileTarget, setFileTarget] = useState<HTMLDivElement | null>(null)
+  const [saveTarget, setSaveTarget] = useState<HTMLDivElement | null>(null)
+  const closeSidebar = () => {
+    document.querySelector<HTMLButtonElement>('.activity-bar [aria-expanded="true"]')?.focus()
+    setSidebar(null)
+  }
   const [extensionError, setExtensionError] = useState('')
   const [extensionPrompt, setExtensionPrompt] = useState<ExtensionPromptRequest | null>(null)
   const promptRef = useRef<ExtensionPromptRequest | null>(null)
   const promptSequence = useRef(0)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [layoutOpen, setLayoutOpen] = useState(false)
   const [layout, setLayout] = useState(loadLayout)
   const [layoutError, setLayoutError] = useState<string | null>(null)
   const [reference, setReference] = useState<{ name: string; text: string; fromExtension?: boolean } | null>(null)
@@ -92,11 +98,11 @@ export default function App() {
     document.documentElement.dataset.theme = resolved
   }, [resolved])
 
-  const toggleTheme = () => {
-    const next = nextThemePref(themePref)
+  const chooseTheme = (next: ThemePref) => {
     setThemePref(next)
     saveThemePref(next)
   }
+  const toggleSidebar = (next: NonNullable<typeof sidebar>) => setSidebar(current => current === next ? null : next)
 
   const getCode = useCallback(() => {
     const view = editorRef.current?.view
@@ -121,18 +127,31 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>shakyo</h1>
-        <span className="subtitle">コード写経支援ツール</span>
-        <button className="theme-toggle-button" onClick={toggleTheme}>
-          {THEME_LABELS[themePref]}
-        </button>
-        <button onClick={() => setLayoutOpen(true)}>レイアウト</button>
-        <button onClick={() => setExtensionsOpen(true)}>拡張機能</button>
-        <button className="settings-button" onClick={() => setSettingsOpen(true)}>
-          設定
-        </button>
-      </header>
+      <div className="workbench">
+      <nav className="activity-bar" aria-label="機能">
+        {(['files', 'extensions', 'layout', 'theme', 'settings', 'help'] as const).map(id => {
+          const label = { files: 'ファイル', extensions: '拡張機能', layout: 'レイアウト', theme: THEME_LABELS[themePref], settings: '設定', help: 'ヘルプ' }[id]
+          return <IconButton key={id} icon={id === 'theme' ? resolved === 'light' ? 'sun' : 'moon' : id} label={label}
+            aria-expanded={sidebar === id} aria-controls={`sidebar-${id}`} onClick={() => toggleSidebar(id)} />
+        })}
+      </nav>
+      <aside className="app-sidebar" hidden={!sidebar} aria-label="機能サイドバー" onKeyDown={e => {
+        if (e.key === 'Escape') { e.stopPropagation(); closeSidebar() }
+      }}>
+        <div className="sidebar-heading"><span>{sidebar ? { files: 'ファイル', extensions: '拡張機能', layout: 'レイアウト', theme: 'テーマ', settings: '設定', help: 'ヘルプ' }[sidebar] : ''}</span><IconButton icon="close" label="サイドバーを閉じる" onClick={closeSidebar} /></div>
+        <div id="sidebar-files" hidden={sidebar !== 'files'}><div ref={setFileTarget} /><div ref={setSaveTarget} /></div>
+        <div id="sidebar-extensions" hidden={sidebar !== 'extensions'}>{sidebar === 'extensions' && <ExtensionDialog embedded manager={extensionManager} onClose={closeSidebar} onRun={(id, command) => {
+          setExtensionError('')
+          void extensionManager.run(id, command).catch(e => setExtensionError(e instanceof Error ? e.message : '拡張の実行に失敗しました。'))
+        }} />}</div>
+        <div id="sidebar-settings" hidden={sidebar !== 'settings'}>{sidebar === 'settings' && <SettingsDialog embedded onClose={closeSidebar} />}</div>
+        <div id="sidebar-layout" hidden={sidebar !== 'layout'}>{sidebar === 'layout' && <LayoutDialog embedded layout={layout} onApply={next => changeLayout(next, true)} onClose={closeSidebar} />}</div>
+        <div id="sidebar-theme" hidden={sidebar !== 'theme'} className="sidebar-panel">
+          {(['light', 'dark', 'system'] as const).map(pref => <IconButton key={pref} icon={pref === 'light' ? 'sun' : pref === 'dark' ? 'moon' : 'system'} label={THEME_LABELS[pref]} aria-pressed={themePref === pref} onClick={() => chooseTheme(pref)} />)}
+        </div>
+        <div id="sidebar-help" hidden={sidebar !== 'help'}>{sidebar === 'help' && <HelpPanel />}</div>
+      </aside>
+      <div className="workspace-content">
       {layoutError && <p className="error-text" role="status">{layoutError}</p>}
       {extensionError && <p className="error-text" role="status">{extensionError}<button onClick={() => setExtensionError('')}>閉じる</button></p>}
       <main className="app-main">
@@ -140,9 +159,11 @@ export default function App() {
           layout={layout}
           onChange={changeLayout}
           panes={{
-            reference: <ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} obscured={settingsOpen || layoutOpen || extensionsOpen || !!extensionPrompt} extensionPort={referencePort} onExtensionChange={onExtensionReferenceChange} />,
+            reference: <ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} obscured={!!extensionPrompt} sidebarTarget={fileTarget} extensionPort={referencePort} onExtensionChange={onExtensionReferenceChange} />,
             editor: (
               <ShakyoEditor
+                sidebarTarget={saveTarget}
+                onOpenFiles={() => setSidebar("files")}
                 editorRef={editorRef}
                 referenceText={reference?.text ?? null}
                 referenceName={reference?.name ?? null}
@@ -152,18 +173,12 @@ export default function App() {
                 allowReferenceRestore={!reference?.fromExtension}
               />
             ),
-            explain: <ExplainPanel getCode={getCode} onOpenSettings={() => setSettingsOpen(true)} />,
+            explain: <ExplainPanel getCode={getCode} onOpenSettings={() => setSidebar("settings")} />,
           }}
         />
       </main>
-      {layoutOpen && (
-        <LayoutDialog layout={layout} onApply={(next) => changeLayout(next, true)} onClose={() => setLayoutOpen(false)} />
-      )}
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
-      {extensionsOpen && <ExtensionDialog manager={extensionManager} onClose={() => setExtensionsOpen(false)} onRun={(id, command) => {
-        setExtensionsOpen(false); setExtensionError('')
-        void extensionManager.run(id, command).catch(e => setExtensionError(e instanceof Error ? e.message : '拡張の実行に失敗しました。'))
-      }} />}
+      </div>
+      </div>
       {extensionPrompt && <ExtensionPrompt key={extensionPrompt.id} request={extensionPrompt} />}
     </div>
   )

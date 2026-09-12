@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { collectFocusable, nextFocusTarget } from './focusTrap'
 
-export function useFocusTrap<T extends HTMLElement>(onClose: () => void): React.RefObject<T | null> {
+export function useFocusTrap<T extends HTMLElement>(onClose: () => void, enabled = true): React.RefObject<T | null> {
   const containerRef = useRef<T | null>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
@@ -10,6 +10,7 @@ export function useFocusTrap<T extends HTMLElement>(onClose: () => void): React.
   const [previouslyFocused] = useState(() => document.activeElement)
 
   useEffect(() => {
+    if (!enabled) return
     const container = containerRef.current
     if (!container) return
 
@@ -41,7 +42,7 @@ export function useFocusTrap<T extends HTMLElement>(onClose: () => void): React.
         previouslyFocused.focus()
       }
     }
-  }, [previouslyFocused])
+  }, [previouslyFocused, enabled])
 
   return containerRef
 }

@@ -293,6 +293,77 @@ pub async fn sync_reference_webview(
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BrowserAction {
+    Back,
+    Forward,
+    Reload,
+    Location,
+    Navigate,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserLocation {
+    requested_url: Option<String>,
+    url: Option<String>,
+}
+
+#[tauri::command]
+pub async fn reference_browser_action(
+    webview: Webview,
+    state: tauri::State<'_, ReferenceState>,
+    action: BrowserAction,
+    url: Option<String>,
+) -> Result<BrowserLocation, String> {
+    if webview.label() != "main" || webview.window().label() != "main" {
+        return Err("この操作はメイン画面からのみ利用できます。".into());
+    }
+    let caller = webview
+        .url()
+        .map_err(|_| "呼び出し元を確認できませんでした。")?;
+    if !trusted_app_url(&caller, webview.config().build.dev_url.as_ref()) {
+        return Err("この操作はアプリ画面からのみ利用できます。".into());
+    }
+    let mut current = state
+        .0
+        .lock()
+        .map_err(|_| "Web表示の状態を取得できませんでした。")?;
+    let Some(view) = webview.window().get_webview(LABEL) else {
+        return Ok(BrowserLocation {
+            requested_url: current.clone(),
+            url: None,
+        });
+    };
+    // Fixed scripts only: never interpolate page URLs or other untrusted data.
+    match action {
+        BrowserAction::Back => view.eval("history.back()"),
+        BrowserAction::Forward => view.eval("history.forward()"),
+        BrowserAction::Reload => view.reload(),
+        BrowserAction::Location => Ok(()),
+        BrowserAction::Navigate => {
+            let raw = url.ok_or("URLを指定してください。")?;
+            let parsed = Url::parse(&raw).map_err(|_| "URLが正しくありません。")?;
+            if !allowed_url(&parsed) {
+                return Err("このURLは表示できません。".into());
+            }
+            view.navigate(parsed)
+                .map_err(|_| "ページを開けませんでした。")?;
+            *current = Some(raw);
+            Ok(())
+        }
+    }
+    .map_err(|_| "ページを操作できませんでした。")?;
+    let url = view
+        .url()
+        .map_err(|_| "現在のURLを取得できませんでした。")?;
+    Ok(BrowserLocation {
+        requested_url: current.clone(),
+        url: allowed_url(&url).then(|| url.to_string()),
+    })
+}
+
 fn trusted_app_url(url: &Url, dev_url: Option<&Url>) -> bool {
     (cfg!(debug_assertions) && dev_url.is_some_and(|dev| url.origin() == dev.origin()))
         || (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
