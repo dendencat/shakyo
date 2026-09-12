@@ -8,16 +8,18 @@ export function SaveLoadDialog({
   lang,
   onLoad,
   onClose,
+  embedded = false,
 }: {
   code: string
   lang: LangId
   onLoad: (s: { code: string; lang: LangId }) => void
+  embedded?: boolean
   onClose: () => void
 }) {
   const [name, setName] = useState('')
   const [snapshots, setSnapshots] = useState(() => listSnapshots())
   const [error, setError] = useState<string | null>(null)
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose, !embedded)
   const trimmedName = name.trim()
   const canSave = trimmedName.length > 0
   const sortedSnapshots = useMemo(
@@ -76,11 +78,11 @@ export function SaveLoadDialog({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={embedded ? undefined : "modal-backdrop"} onClick={embedded ? undefined : onClose}>
       <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
+        className={embedded ? "sidebar-panel" : "modal"}
+        role={embedded ? "region" : "dialog"}
+        aria-modal={embedded ? undefined : true}
         aria-label="保存と読み込み"
         ref={trapRef}
         onClick={(e) => e.stopPropagation()}
@@ -88,7 +90,7 @@ export function SaveLoadDialog({
         <h2>保存と読み込み</h2>
         <label className="field">
           名前
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!embedded} />
         </label>
         {error && <p className="error-text">{error}</p>}
         <div className="modal-actions">
@@ -115,9 +117,9 @@ export function SaveLoadDialog({
             </div>
           ))}
         </div>
-        <div className="modal-actions">
+        {!embedded && <div className="modal-actions">
           <button onClick={onClose}>閉じる</button>
-        </div>
+        </div>}
       </div>
     </div>
   )

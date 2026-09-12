@@ -22,21 +22,22 @@ const previewAreas: Record<LayoutPattern, string> = {
   rows: '"slot0" "slot1" "slot2"',
 }
 
-export function LayoutDialog({ layout, onApply, onClose }: {
+export function LayoutDialog({ layout, onApply, onClose, embedded = false }: {
   layout: LayoutConfig
   onApply: (layout: LayoutConfig) => void
+  embedded?: boolean
   onClose: () => void
 }) {
   const [draft, setDraft] = useState(layout)
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose, !embedded)
   const slotLabels = getSlotLabels(draft.pattern)
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={embedded ? undefined : "modal-backdrop"} onClick={embedded ? undefined : onClose}>
       <div
-        className="modal layout-dialog"
-        role="dialog"
-        aria-modal="true"
+        className={embedded ? "sidebar-panel layout-dialog" : "modal layout-dialog"}
+        role={embedded ? "region" : "dialog"}
+        aria-modal={embedded ? undefined : true}
         aria-label="レイアウト"
         ref={trapRef}
         onClick={(e) => e.stopPropagation()}

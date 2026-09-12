@@ -8,12 +8,12 @@ import {
 } from '../lib/settings'
 import { useFocusTrap } from '../lib/useFocusTrap'
 
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const [settings, setSettings] = useState(loadSettings)
   const [dirty, setDirty] = useState(false)
   const dirtyRef = useRef(dirty)
   dirtyRef.current = dirty
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose, !embedded)
 
   useEffect(() => {
     // storage イベントは他タブでの localStorage 変更時にのみ発火し、
@@ -33,11 +33,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={embedded ? undefined : "modal-backdrop"} onClick={embedded ? undefined : onClose}>
       <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
+        className={embedded ? "sidebar-panel" : "modal"}
+        role={embedded ? "region" : "dialog"}
+        aria-modal={embedded ? undefined : true}
         aria-label="設定"
         ref={trapRef}
         onClick={(e) => e.stopPropagation()}
