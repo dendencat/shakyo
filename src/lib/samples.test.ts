@@ -27,7 +27,18 @@ describe('CODE_SAMPLES', () => {
     }
   })
 
-  it('6件のサンプルが登録されている', () => {
-    expect(CODE_SAMPLES.length).toBe(6)
+  it('既存6件とSQL6題のサンプルが登録されている', () => {
+    expect(CODE_SAMPLES.length).toBe(12)
+    const sqlSamples = CODE_SAMPLES.filter((sample) => sample.lang === 'sql')
+    expect(sqlSamples).toHaveLength(6)
+    expect(sqlSamples.map((sample) => sample.id)).toEqual([
+      'select-sql', 'where-order-sql', 'group-having-sql',
+      'join-sql', 'subquery-sql', 'cte-sql',
+    ])
+    for (const sample of sqlSamples) {
+      expect(sample.code).toMatch(/^-- 目的:/)
+      expect(sample.code).toMatch(/-- (products|orders|customers):/)
+      expect(sample.code.trim()).toMatch(/;$/)
+    }
   })
 })

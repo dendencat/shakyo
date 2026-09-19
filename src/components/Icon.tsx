@@ -1,7 +1,10 @@
 import type { ButtonHTMLAttributes } from 'react'
 
-export type IconName = 'files' | 'extensions' | 'settings' | 'help' | 'sun' | 'moon' | 'system' | 'layout' | 'close' | 'back' | 'forward' | 'reload' | 'go' | 'bookmark'
+export type IconName = 'files' | 'extensions' | 'settings' | 'help' | 'sun' | 'moon' | 'system' | 'layout' | 'close' | 'back' | 'forward' | 'reload' | 'go' | 'bookmark' | 'folder' | 'history' | 'shortcuts'
 const paths: Record<IconName, React.ReactNode> = {
+  folder: <path d="M3 6h7l2 3h9v11H3zM3 6V4h7l2 2h8v3" />,
+  history: <><path d="M3 4v6h6M3 10a9 9 0 1 1 1 8M12 7v5l4 2" /></>,
+  shortcuts: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 16h10" /></>,
   files: <><path d="M14 2H6v16h14V8zM14 2v6h6M3 6v16h13" /></>,
   extensions: <><path d="M3 3h7v7H3zM3 14h7v7H3zM14 14h7v7h-7zM17 1l5 5-5 5-5-5z" /></>,
   settings: <><path d="m9 3 1-2h4l1 2 3 2 2-.2 2 3-1 2v4l1 2-2 3-2-.2-3 2-1 2h-4l-1-2-3-2-2 .2-2-3 1-2v-4l-1-2 2-3 2 .2z" /><circle cx="12" cy="12" r="3" /></>,

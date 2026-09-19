@@ -6,6 +6,40 @@ import type { LayoutConfig, LayoutPattern, PaneId } from '../lib/layout'
 const PANE_IDS: PaneId[] = ['reference', 'editor', 'explain']
 const DIVIDER_SIZE = 5
 
+function compactLayout(layout: LayoutConfig, visible: Record<PaneId, boolean>) {
+  const slots = [0, 1, 2].filter(slot => visible[layout.panes[slot]])
+  if (slots.length !== 2) return null
+  const straight = layout.pattern === 'columns' || layout.pattern === 'rows'
+  const divider: 0 | 1 = straight ? slots[0] as 0 | 1 : slots.includes(0) ? 0 : 1
+  const axis = dividerAxis(layout.pattern, divider)
+  const [a, b] = layout.ratios[layout.pattern]
+  const weights = [a, b - a, 1 - b]
+  const reversed = !straight && isReversed(layout.pattern, divider)
+  const minimum = straight ? 0.15 / (weights[slots[0]] + weights[slots[1]]) : 0.15
+  const ordered = reversed ? [...slots].reverse() : slots
+  const fraction = straight ? weights[slots[0]] / (weights[slots[0]] + weights[slots[1]]) : reversed ? 1 - layout.ratios[layout.pattern][divider] : layout.ratios[layout.pattern][divider]
+  const style: CSSProperties = {
+    gridTemplateAreas: axis === 'x' ? `"slot${ordered[0]} divider${divider} slot${ordered[1]}"` : `"slot${ordered[0]}" "divider${divider}" "slot${ordered[1]}"`,
+    gridTemplateColumns: axis === 'x' ? tracks([fraction, 1 - fraction]) : 'minmax(0, 1fr)',
+    gridTemplateRows: axis === 'y' ? tracks([fraction, 1 - fraction]) : 'minmax(0, 1fr)',
+  }
+  const resize = (ratio: number) => {
+    ratio = Math.max(minimum, Math.min(1 - minimum, ratio))
+    const pair: [number, number] = [...layout.ratios[layout.pattern]]
+    if (straight) {
+      const total = weights[slots[0]] + weights[slots[1]]
+      const nextWeights = [...weights]
+      nextWeights[slots[0]] = total * ratio
+      nextWeights[slots[1]] = total * (1 - ratio)
+      // Keep floating-point rounding at the boundary within persisted layout limits.
+      pair[0] = Math.max(0.15, Math.min(0.85, nextWeights[0]))
+      pair[1] = Math.max(0.15, Math.min(0.85, nextWeights[0] + nextWeights[1]))
+    } else pair[divider] = reversed ? 1 - ratio : ratio
+    return { ...layout, ratios: { ...layout.ratios, [layout.pattern]: pair } }
+  }
+  return { style, divider, fraction, minimum, resize }
+}
+
 const AREAS: Record<LayoutPattern, string> = {
   columns: '"slot0 divider0 slot1 divider1 slot2"',
   rows: '"slot0" "divider0" "slot1" "divider1" "slot2"',
@@ -56,14 +90,18 @@ export function WorkspaceLayout({
   layout,
   onChange,
   panes,
+  visiblePanes = { reference: true, editor: true, explain: true },
 }: {
   layout: LayoutConfig
   onChange: (layout: LayoutConfig, persist: boolean) => void
   panes: Record<PaneId, ReactNode>
+  visiblePanes?: Record<PaneId, boolean>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<Drag | null>(null)
   const [activeDivider, setActiveDivider] = useState<0 | 1 | null>(null)
+  const visibleSlots = [0, 1, 2].filter(slot => visiblePanes[layout.panes[slot]])
+  const compact = compactLayout(layout, visiblePanes)
 
   const finishDrag = useCallback((cancel: boolean) => {
     const drag = dragRef.current
@@ -98,7 +136,7 @@ export function WorkspaceLayout({
     const rect = container.getBoundingClientRect()
     const handle = event.currentTarget.getBoundingClientRect()
     const axis = dividerAxis(layout.pattern, divider)
-    const straight = layout.pattern === 'columns' || layout.pattern === 'rows'
+    const straight = !compact && (layout.pattern === 'columns' || layout.pattern === 'rows')
     const available = (axis === 'x' ? rect.width : rect.height) - DIVIDER_SIZE * (straight ? 2 : 1)
     if (available <= 0) return
     dragRef.current = {
@@ -121,6 +159,12 @@ export function WorkspaceLayout({
     const axis = dividerAxis(pattern, drag.divider)
     const straight = pattern === 'columns' || pattern === 'rows'
     const position = (axis === 'x' ? event.clientX : event.clientY) - drag.origin - drag.offset
+    const reduced = compactLayout(drag.initial, visiblePanes)
+    if (reduced) {
+      drag.current = reduced.resize(position / drag.available)
+      onChange(drag.current, false)
+      return
+    }
     let ratio = (position - (straight && drag.divider === 1 ? DIVIDER_SIZE : 0)) / drag.available
     if (isReversed(pattern, drag.divider)) ratio = 1 - ratio
     drag.current = resizeLayout(drag.initial, drag.divider, ratio)
@@ -134,6 +178,10 @@ export function WorkspaceLayout({
     const positive = axis === 'x' ? 'ArrowRight' : 'ArrowDown'
     if (event.key !== negative && event.key !== positive) return
     event.preventDefault()
+    if (compact) {
+      onChange(compact.resize(compact.fraction + (event.key === positive ? 0.02 : -0.02)), true)
+      return
+    }
     const delta = (event.key === positive ? 0.02 : -0.02) * (isReversed(layout.pattern, divider) ? -1 : 1)
     onChange(resizeLayout(layout, divider, layout.ratios[layout.pattern][divider] + delta), true)
   }
@@ -143,14 +191,15 @@ export function WorkspaceLayout({
   const ratios = layout.ratios[layout.pattern]
 
   return (
-    <div className="workspace-layout" ref={containerRef} style={gridStyle(layout)} data-pattern={layout.pattern}>
+    <div className="workspace-layout" ref={containerRef} style={visibleSlots.length === 1 ? { gridTemplateAreas: `"slot${visibleSlots[0]}"`, gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: 'minmax(0, 1fr)' } : compact?.style ?? gridStyle(layout)} data-pattern={layout.pattern}>
       {/* Keep both DOM order and parents fixed: moving an iframe in the DOM reloads it. */}
       {PANE_IDS.map((id) => (
-        <div key={id} className="workspace-pane" data-pane={id} style={{ gridArea: `slot${layout.panes.indexOf(id)}` }}>
+        <div key={id} className="workspace-pane" data-pane={id} hidden={!visiblePanes[id]} style={{ gridArea: `slot${layout.panes.indexOf(id)}`, display: visiblePanes[id] ? undefined : 'none' }}>
           {panes[id]}
         </div>
       ))}
       {([0, 1] as const).map((divider) => {
+        if (visibleSlots.length < 2 || (compact && compact.divider !== divider)) return null
         const slot = straight ? divider : divider === 0 ? 0 : 1
         const axis = dividerAxis(layout.pattern, divider)
         return (
@@ -162,9 +211,9 @@ export function WorkspaceLayout({
             tabIndex={0}
             aria-label={`${slotLabels[slot]}の${PANE_LABELS[layout.panes[slot]]}のサイズ調整`}
             aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
-            aria-valuemin={15}
-            aria-valuemax={Math.round((straight ? divider === 0 ? ratios[1] - 0.15 : 0.85 - ratios[0] : 0.85) * 100)}
-            aria-valuenow={Math.round((ratios[divider] - (straight && divider === 1 ? ratios[0] : 0)) * 100)}
+            aria-valuemin={compact ? Math.round(compact.minimum * 100) : 15}
+            aria-valuemax={compact ? Math.round((1 - compact.minimum) * 100) : Math.round((straight ? divider === 0 ? ratios[1] - 0.15 : 0.85 - ratios[0] : 0.85) * 100)}
+            aria-valuenow={Math.round((compact?.fraction ?? (ratios[divider] - (straight && divider === 1 ? ratios[0] : 0))) * 100)}
             onPointerDown={(event) => startDrag(event, divider)}
             onPointerMove={moveDrag}
             onPointerUp={(event) => {

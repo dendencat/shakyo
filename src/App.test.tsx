@@ -28,6 +28,16 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 const click = async (label: string) => act(async () => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click())
+it('opens shortcuts with Ctrl+/ and announces successful settings saves', async () => {
+  await act(async () => root.render(<App />))
+  await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: '/', ctrlKey: true, bubbles: true, cancelable: true })))
+  expect(container.querySelector('#shortcut-dialog')).not.toBeNull()
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>('#shortcut-dialog button')].find(button => button.textContent === 'キャンセル')!.click())
+  expect(container.querySelector('#shortcut-dialog')).toBeNull()
+  await click('設定')
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>('#sidebar-settings button')].find(button => button.textContent === '保存')!.click())
+  expect(container.querySelector('[role=status]')!.textContent).toBe('設定を保存しました')
+})
 it('opens, switches and closes icon menus without replacing the working panes', async () => {
   await act(async () => root.render(<App />))
   const editor = container.querySelector<HTMLTextAreaElement>('[aria-label="editor-state"]')!
@@ -35,7 +45,7 @@ it('opens, switches and closes icon menus without replacing the working panes', 
   expect(container.querySelector('.app-header')).toBeNull()
   const rail = container.querySelector('.activity-bar')!
   expect(rail.textContent).toBe('')
-  expect(rail.querySelectorAll('button[title]')).toHaveLength(6)
+  expect(rail.querySelectorAll('button[title]')).toHaveLength(7)
   await click('ファイル')
   expect(container.querySelector('aside')!.hidden).toBe(false)
   await click('設定')

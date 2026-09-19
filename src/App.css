@@ -345,7 +345,6 @@
 
 .shakyo-code .cm-editor {
   height: 100%;
-  font-size: 14px;
 }
 
 .reference-code .cm-editor .cm-content,
@@ -552,6 +551,9 @@
   font-size: 16px;
 }
 
+#shortcut-dialog { max-height: 90vh; overflow-y: auto; box-sizing: border-box; }
+#shortcut-dialog .modal-actions { flex-wrap: wrap; }
+
 .field {
   display: flex;
   flex-direction: column;
@@ -627,7 +629,7 @@
 .icon-button[aria-expanded="true"], .icon-button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
 button:disabled { opacity: .4; cursor: default; }
 button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.activity-bar .icon-button:nth-last-child(2) { margin-top: auto; }
+.activity-bar > .icon-button[aria-controls="sidebar-help"] { margin-top: auto; }
 .app-sidebar { width: clamp(250px, 25vw, 340px); flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border); background: var(--bg-sub); }
 .app-sidebar[hidden], .app-sidebar [hidden] { display: none; }
 .sidebar-heading { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-sub); z-index: 1; font-weight: 600; border-bottom: 1px solid var(--border); }
@@ -655,3 +657,11 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 #sidebar-settings .sidebar-panel > h2,
 #sidebar-layout .sidebar-panel > h2,
 #sidebar-extensions .sidebar-panel > h2 { display: none; }
+.preferences-group { border: 1px solid var(--border); border-radius: 6px; margin: 12px 0; padding: 12px; min-width: 0; }
+.preferences-group legend { padding: 0 4px; }
+.preference-check { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.font-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.theme-menu { position: relative; }
+.theme-popover { position: absolute; left: calc(100% + 8px); bottom: 0; display: flex; gap: 6px; padding: 8px; z-index: 100; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px #0003; }
+.snackbar-region { position: fixed; top: 8px; right: 12px; z-index: 2000; pointer-events: none; max-width: calc(100vw - 72px); }
+.snackbar { padding: 10px 16px; border-radius: 6px; background: var(--text); color: var(--bg); box-shadow: 0 3px 12px #0003; font-size: 14px; }
