@@ -11,6 +11,9 @@ import { loadProgress, saveProgress } from '../lib/progress'
 import { diffAgainstReference, normalizeReference } from '../lib/diff'
 import { SaveLoadDialog } from './SaveLoadDialog'
 import { extensionRevision } from '../extensions/editorAdapter'
+import { loadPreferences, savePreferences, usePreferences, type Preferences } from '../lib/preferences'
+import { editorShortcutExtensions, useShortcuts } from '../lib/shortcuts'
+import { editorPreferenceExtensions } from '../lib/editorPreferences'
 
 function initialLang(): LangId {
   const saved = localStorage.getItem(KEY_EDITOR_LANG)
@@ -39,6 +42,9 @@ export function ShakyoEditor({
   onLanguageChange?: (language: string) => void
   allowReferenceRestore?: boolean
 }) {
+  const { editorMode, indentStyle, indentWidth, autoIndent, fontSize } = usePreferences()
+  const shortcuts = useShortcuts()
+  const [preferenceError, setPreferenceError] = useState('')
   const [code, setCode] = useState(() => localStorage.getItem(KEY_DRAFT) ?? '')
   const [lang, setLang] = useState<LangId>(initialLang)
   const [checkEnabled, setCheckEnabled] = useState(false)
@@ -55,7 +61,11 @@ export function ShakyoEditor({
     onLanguageChange?.(lang)
   }, [lang, onLanguageChange])
 
-  const extensions = useMemo(() => [...languageExtension(lang), diffHighlight, extensionRevision], [lang])
+  const extensions = useMemo(() => [
+    ...languageExtension(lang), diffHighlight, extensionRevision,
+    ...editorPreferenceExtensions({ editorMode, indentStyle, indentWidth, autoIndent, fontSize }),
+    editorShortcutExtensions(shortcuts, editorMode),
+  ], [lang, editorMode, indentStyle, indentWidth, autoIndent, fontSize, shortcuts])
 
   const normalizedReferenceLength = useMemo(
     () => (referenceText != null ? normalizeReference(referenceText).length : null),
@@ -211,6 +221,10 @@ export function ShakyoEditor({
                 ))}
               </select>
             </label>
+            <label>インデント幅: <select value={indentWidth} onChange={event => {
+              try { savePreferences({ ...loadPreferences(), indentWidth: Number(event.target.value) as Preferences['indentWidth'] }); setPreferenceError('') }
+              catch { setPreferenceError('インデント幅を保存できませんでした。') }
+            }}>{[2, 4, 8].map(width => <option key={width} value={width}>{width}</option>)}</select></label>
             <label
               className="check-label"
               title={referenceText == null ? 'お手本のテキストファイルを開くと使えます' : undefined}
@@ -227,18 +241,22 @@ export function ShakyoEditor({
             <button onClick={clear}>クリア</button>
           </div>
         </div>
-        <div className="pane-body editor-body">
+        <div className="pane-body editor-body" onKeyDownCapture={(event) => {
+          // Let the IME consume its own keys before any modal keymap sees them.
+          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) event.stopPropagation()
+        }}>
           <CodeMirror
             ref={editorRef}
             value={code}
             onChange={onChange}
             theme={resolvedTheme}
             extensions={extensions}
-            basicSetup={{ lineNumbers: true, foldGutter: false }}
+            basicSetup={{ lineNumbers: true, foldGutter: false, indentOnInput: false }}
             placeholder="ここにお手本のコードを書き写していきます…"
             className="shakyo-code"
           />
         </div>
+        {preferenceError && <p role="alert">{preferenceError}</p>}
         <div className="status-bar">
           <span>WPM: {wpm ?? '—'}</span>
           <span>正確率: {accuracy != null ? `${accuracy}%` : '—'}</span>

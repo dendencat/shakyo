@@ -1,7 +1,7 @@
 {
   "name": "shakyo",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,9 +14,14 @@
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.0",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.6",
     "@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
+    "@replit/codemirror-emacs": "^6.1.0",
+    "@replit/codemirror-vim": "^6.4.0",
+    "@replit/codemirror-vscode-keymap": "^6.0.2",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@uiw/codemirror-extensions-langs": "^4.25.10",

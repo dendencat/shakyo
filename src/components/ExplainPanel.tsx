@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { buildExplanationMessages, streamChat, streamExplanation } from '../lib/openai'
 import { loadSettings } from '../lib/settings'
 import { SafeMarkdown } from './SafeMarkdown'
+import { IconButton } from './Icon'
 
 export function ExplainPanel({
   getCode,
   onOpenSettings,
+  onClose,
 }: {
   getCode: () => { code: string; isSelection: boolean } | null
   onOpenSettings: () => void
+  onClose?: () => void
 }) {
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -156,6 +159,7 @@ export function ExplainPanel({
     <section className="explain-panel">
       <div className="pane-header">
         <h2>コードの意味解説</h2>
+        {onClose && <IconButton icon="close" label="解説を閉じる" onClick={onClose} />}
         <div className="toolbar">
           {sourceLabel && <span className="badge">{sourceLabel}</span>}
           {copied && <span className="badge">コピーしました</span>}

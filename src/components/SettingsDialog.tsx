@@ -7,9 +7,19 @@ import {
   type ReasoningEffort,
 } from '../lib/settings'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { KEY_PREFERENCES, loadPreferences, savePreferences, type Preferences, type EditorMode } from '../lib/preferences'
+import { PANE_LABELS } from '../lib/layout'
 
-export function SettingsDialog({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
+const MODEL_OPTIONS = [DEFAULT_MODEL, 'gpt-5.4-nano', 'gpt-5.4'] as const
+
+export function SettingsDialog({ onClose, onSaved, embedded = false }: { onClose: () => void; onSaved?: () => void; embedded?: boolean }) {
   const [settings, setSettings] = useState(loadSettings)
+  const [preferences, setPreferences] = useState(loadPreferences)
+  const [error, setError] = useState('')
+  const changePreferences = (change: Partial<Preferences>) => {
+    setDirty(true)
+    setPreferences(current => ({ ...current, ...change }))
+  }
   const [dirty, setDirty] = useState(false)
   const dirtyRef = useRef(dirty)
   dirtyRef.current = dirty
@@ -22,13 +32,26 @@ export function SettingsDialog({ onClose, embedded = false }: { onClose: () => v
       if (isSettingsStorageKey(e.key) && !dirtyRef.current) {
         setSettings(loadSettings())
       }
+      if ((e.key === null || e.key === KEY_PREFERENCES) && !dirtyRef.current) setPreferences(loadPreferences())
     }
     window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
+    const refreshPreferences = () => { if (!dirtyRef.current) setPreferences(loadPreferences()) }
+    window.addEventListener('shakyo:preferences', refreshPreferences)
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('shakyo:preferences', refreshPreferences)
+    }
   }, [])
 
   const save = () => {
-    saveSettings({ ...settings, apiKey: settings.apiKey.trim(), model: settings.model.trim() || DEFAULT_MODEL })
+    try {
+      saveSettings({ ...settings, apiKey: settings.apiKey.trim(), model: settings.model.trim() || DEFAULT_MODEL })
+      savePreferences(preferences)
+    } catch {
+      setError('設定を保存できませんでした。保存領域を確認して再度お試しください。')
+      return
+    }
+    onSaved?.()
     onClose()
   }
 
@@ -43,6 +66,39 @@ export function SettingsDialog({ onClose, embedded = false }: { onClose: () => v
         onClick={(e) => e.stopPropagation()}
       >
         <h2>設定</h2>
+        <fieldset className="preferences-group"><legend>表示</legend>
+          {(['reference', 'explain'] as const).map(id => <label className="preference-check" key={id}>
+            <input type="checkbox" checked={preferences.visiblePanes[id]}
+              onChange={event => changePreferences({ visiblePanes: { ...preferences.visiblePanes, [id]: event.target.checked } })} />
+            {PANE_LABELS[id]}を表示
+          </label>)}
+          <p className="hint">写経エディタは常に表示します。お手本・解説は各ペインの閉じるボタンでも非表示にできます。</p>
+          <div className="field">コードの文字サイズ
+            <div className="font-controls">
+              <button type="button" aria-label="文字を縮小" disabled={preferences.fontSize <= 10} onClick={() => changePreferences({ fontSize: preferences.fontSize - 1 })}>−</button>
+              <output aria-live="polite">{preferences.fontSize}px</output>
+              <button type="button" aria-label="文字を拡大" disabled={preferences.fontSize >= 32} onClick={() => changePreferences({ fontSize: preferences.fontSize + 1 })}>＋</button>
+              <button type="button" onClick={() => changePreferences({ fontSize: 14 })}>リセット</button>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset className="preferences-group"><legend>エディタ</legend>
+          <label className="field">エディタモード<select value={preferences.editorMode} onChange={e => changePreferences({ editorMode: e.target.value as EditorMode })}>
+            <option value="normal">ノーマル</option><option value="vim">Vim</option><option value="emacs">Emacs</option><option value="vscode">VSCode</option>
+          </select></label>
+          <label className="field">インデント<select value={preferences.indentStyle} onChange={e => changePreferences({ indentStyle: e.target.value as Preferences['indentStyle'] })}>
+            <option value="spaces">スペース</option><option value="tabs">タブ</option>
+          </select></label>
+          <label className="field">インデント幅<select value={preferences.indentWidth} onChange={e => changePreferences({ indentWidth: Number(e.target.value) as Preferences['indentWidth'] })}>
+            {[2, 4, 8].map(width => <option key={width} value={width}>{width}</option>)}
+          </select></label>
+          <label className="preference-check"><input type="checkbox" checked={preferences.autoIndent} onChange={e => changePreferences({ autoIndent: e.target.checked })} />自動インデント</label>
+        </fieldset>
+        <fieldset className="preferences-group"><legend>Web参照</legend>
+          <label className="preference-check"><input type="checkbox" checked={preferences.showHistorySuggestions} onChange={e => changePreferences({ showHistorySuggestions: e.target.checked })} />URL欄で履歴候補を表示</label>
+          <p className="hint">無効にしても履歴は記録され、履歴アイコンから確認できます。</p>
+        </fieldset>
+        <fieldset className="preferences-group"><legend>OpenAI</legend>
         <label className="field">
           OpenAI APIキー
           <input
@@ -58,15 +114,16 @@ export function SettingsDialog({ onClose, embedded = false }: { onClose: () => v
         </label>
         <label className="field">
           モデル
-          <input
-            type="text"
+          <select
             value={settings.model}
-            placeholder={DEFAULT_MODEL}
             onChange={(e) => {
               setDirty(true)
               setSettings((s) => ({ ...s, model: e.target.value }))
             }}
-          />
+          >
+            {MODEL_OPTIONS.map(model => <option key={model} value={model}>{model}{model === DEFAULT_MODEL ? '（既定）' : ''}</option>)}
+            {!MODEL_OPTIONS.some(model => model === settings.model) && <option value={settings.model}>{settings.model}（保存済みのモデル）</option>}
+          </select>
         </label>
         <details className="field-advanced">
           <summary>詳細設定</summary>
@@ -92,6 +149,15 @@ export function SettingsDialog({ onClose, embedded = false }: { onClose: () => v
         <p className="hint">
           APIキーはこのブラウザのlocalStorageにのみ保存され、OpenAI API以外には送信されません。
         </p>
+        <details className="field-advanced">
+          <summary>送信する情報と料金について</summary>
+          <p className="hint">解説の実行時に、選択したコード（未選択なら全文）と解説用の指示をOpenAIに直接送信します。追加質問では、元のコード・過去の質問と回答・今回の質問も送信します。APIキーは認証ヘッダーで送信し、shakyo開発者のサーバーを経由しません。</p>
+          <p className="hint">OpenAI APIのデータは、利用者が明示的に共有へ同意した場合を除き、既定ではモデルの学習に使用されません。不正利用監視ログは通常最大30日保持され、法的義務などの例外があります。保存されないことを保証するものではありません。参照するWebサイトや、通信を許可した拡張の通信は、それぞれ別の扱いです。</p>
+          <p className="hint">APIはChatGPTのサブスクリプションとは別料金です。モデルの切り替え、入力・出力・推論トークン数、追加質問で送る会話の長さにより請求額が変わります。このアプリには請求額の上限を強制する機能はありません。利用前に料金と利用状況を確認してください。</p>
+          <p className="hint"><a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noopener noreferrer">OpenAIのデータ利用方針</a> / <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener noreferrer">API料金</a> / <a href="https://platform.openai.com/usage" target="_blank" rel="noopener noreferrer">利用状況</a></p>
+        </details>
+        </fieldset>
+        {error && <p className="error-text" role="alert">{error}</p>}
         <div className="modal-actions">
           <button onClick={onClose}>キャンセル</button>
           <button className="primary" onClick={save}>

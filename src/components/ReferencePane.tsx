@@ -1,4 +1,4 @@
-import { IconButton } from './Icon'
+import { Icon, IconButton } from './Icon'
 import { emptyNavigation, visit, step, normalizeBrowserUrl } from '../lib/browserNavigation'
 import { nativeBrowserAction } from '../lib/nativeReference'
 import { createPortal } from 'react-dom'
@@ -26,6 +26,8 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { isTauri, openExternal } from '../lib/openExternal'
 import { NativeWebReference } from './NativeWebReference'
 import type { ReferencePort } from '../extensions/referenceAdapter'
+import { usePreferences } from '../lib/preferences'
+import './WebReference.css'
 
 type ReferenceContent =
   | { kind: 'text'; name: string; text: string; lang: LangId | null; fromExtension?: boolean }
@@ -91,6 +93,7 @@ export function ReferencePane({
   sidebarTarget,
   extensionPort,
   onExtensionChange,
+  onClose,
 }: {
   onReferenceChange?: (ref: { name: string; text: string; fromExtension?: boolean } | null) => void
   resolvedTheme: 'light' | 'dark'
@@ -98,7 +101,9 @@ export function ReferencePane({
   obscured?: boolean
   extensionPort?: React.RefObject<ReferencePort | null>
   onExtensionChange?: () => void
+  onClose?: () => void
 }) {
+  const preferences = usePreferences()
   const [tab, setTab] = useState<Tab>('file')
   const [content, setContent] = useState<ReferenceContent | null>(null)
   const [webUrl, setWebUrl] = useState('')
@@ -131,8 +136,19 @@ export function ReferencePane({
   }
   const [webHistory, setWebHistory] = useState(() => loadWebHistory())
   const [webBookmarks, setWebBookmarks] = useState(() => loadWebBookmarks())
-  const [bookmarksOpen, setBookmarksOpen] = useState(true)
-  const [historyOpen, setHistoryOpen] = useState(true)
+  const [webPanel, setWebPanel] = useState<'bookmarks' | 'history' | 'suggestions' | null>(null)
+  const [historyQuery, setHistoryQuery] = useState('')
+  const [activeSuggestion, setActiveSuggestion] = useState(-1)
+  const suggestionsOpen = webPanel === 'suggestions' && preferences.showHistorySuggestions
+  const suggestions = webHistory.filter(entry => entry.url.toLowerCase().includes(historyQuery.toLowerCase()))
+  const bookmarksOpen = webPanel === 'bookmarks'
+  const historyOpen = webPanel === 'history'
+  const showSuggestions = () => {
+    if (!preferences.showHistorySuggestions) return
+    setHistoryQuery('')
+    setActiveSuggestion(-1)
+    setWebPanel('suggestions')
+  }
   const [webError, setWebError] = useState<string | null>(null)
   const [bookmarkModal, setBookmarkModal] = useState<BookmarkModalState | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -181,6 +197,7 @@ export function ReferencePane({
     try {
       const url = normalizeBrowserUrl(inputUrl)
       setWebError(null)
+      setWebPanel(null)
       if (url === loadedUrl && url === currentUrl) { void navigate('reload'); return }
       if (native && url === loadedUrl && url !== currentUrl) {
         void nativeBrowserAction('navigate', url).catch(() => setWebError('ページを開けませんでした。'))
@@ -190,8 +207,6 @@ export function ReferencePane({
       setWebUrl(url)
       setNavigation(history => visit(history, url))
       setWebHistory(addWebHistory(url))
-      setBookmarksOpen(false)
-      setHistoryOpen(false)
     } catch { setWebError('HTTP(S)の正しいURLを入力してください。') }
   }
 
@@ -295,18 +310,8 @@ export function ReferencePane({
     <div className="file-controls">
           <div className="toolbar">
             <button className="primary" onClick={() => fileInputRef.current?.click()}>
-              ファイルを開く…
+              {sidebarTarget ? 'ファイルを開く…' : '参照…'}
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) { setTab("file"); void openFile(f) }
-                e.target.value = ''
-              }}
-            />
             <select value={sampleSelectValue} onChange={(e) => selectSample(e.target.value)}>
               <option value="">サンプルから選ぶ…</option>
               {CODE_SAMPLES.map((sample) => (
@@ -317,12 +322,17 @@ export function ReferencePane({
             </select>
             {content && <span className="file-name" title={content.name}>{content.name}</span>}
           </div>
-          {fileError && <p className="error-text">{fileError}</p>}
     </div>
   )
 
   return (
-    <section className="pane reference-pane">
+    <section className="pane reference-pane" style={{ '--reference-font-size': `${preferences.fontSize}px` } as React.CSSProperties}>
+      <input ref={fileInputRef} type="file" hidden aria-label="お手本ファイル"
+        onChange={e => {
+          const file = e.target.files?.[0]
+          if (file) { setTab('file'); void openFile(file) }
+          e.target.value = ''
+        }} />
       {sidebarTarget && createPortal(fileControls, sidebarTarget)}
       <div className="pane-header">
         <h2>お手本</h2>
@@ -337,15 +347,32 @@ export function ReferencePane({
             Webページ
           </button>
         </div>
+        {onClose && <IconButton icon="close" label="お手本を閉じる" onClick={onClose} />}
       </div>
 
       {tab === 'file' && (
-        <div className="pane-body">
+        <div className="pane-body reference-file-drop"
+          onDragOver={e => {
+            if (!Array.from(e.dataTransfer.types).includes('Files')) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
+          }}
+          onDrop={e => {
+            const file = e.dataTransfer.files?.[0]
+            if (!file) return
+            e.preventDefault()
+            void openFile(file)
+          }}>
           {!sidebarTarget && fileControls}
+          {sidebarTarget && <div className="toolbar">
+            <button className="primary" onClick={() => fileInputRef.current?.click()}>参照…</button>
+            {content && <span className="file-name" title={content.name}>{content.name}</span>}
+          </div>}
+          {fileError && <p className="error-text" role="alert">{fileError}</p>}
           <div className="reference-content">
             {!content && !fileError && (
               <p className="placeholder">
-                お手本にするコードファイル・テキスト・PDFを開いてください。
+                コードファイル・テキスト・PDFをここにドラッグ＆ドロップするか、「参照…」で開いてください。
               </p>
             )}
             {content?.kind === 'text' && (
@@ -426,28 +453,67 @@ export function ReferencePane({
             <IconButton icon="back" label="戻る" disabled={!loadedUrl || navigationBusy || (!native && navigation.index <= 0)} onClick={() => void navigate('back')} />
             <IconButton icon="forward" label="進む" disabled={!loadedUrl || navigationBusy || (!native && navigation.index >= navigation.entries.length - 1)} onClick={() => void navigate('forward')} />
             <IconButton icon="reload" label="ページを更新" disabled={!loadedUrl || navigationBusy} onClick={() => void navigate('reload')} />
+            <div className="web-url-field">
             <input
               aria-label={native ? "現在のURL" : "URL（アプリから開いたページ）"}
               type="url"
               className="url-input"
               placeholder="https://example.com/article"
               value={webUrl}
-              onChange={(e) => setWebUrl(e.target.value)}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={suggestionsOpen}
+              aria-controls={suggestionsOpen ? 'web-history-suggestions' : undefined}
+              aria-activedescendant={suggestionsOpen && activeSuggestion >= 0 ? `web-history-option-${activeSuggestion}` : undefined}
+              autoComplete="off"
+              onFocus={showSuggestions}
+              onClick={() => { if (!suggestionsOpen) showSuggestions() }}
+              onBlur={() => { if (webPanel === 'suggestions') setWebPanel(null) }}
+              onChange={(e) => {
+                setWebUrl(e.target.value)
+                setHistoryQuery(e.target.value)
+                setActiveSuggestion(-1)
+                setWebPanel(preferences.showHistorySuggestions ? 'suggestions' : null)
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') loadWeb()
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                if (e.key === 'Escape' && suggestionsOpen) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setWebPanel(null)
+                } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && preferences.showHistorySuggestions) {
+                  e.preventDefault()
+                  setWebPanel('suggestions')
+                  setActiveSuggestion(index => suggestions.length === 0 ? -1 :
+                    e.key === 'ArrowDown' ? (index + 1) % suggestions.length : (index <= 0 ? suggestions.length - 1 : index - 1))
+                } else if (e.key === 'Enter') {
+                  e.preventDefault()
+                  loadWeb(suggestionsOpen && activeSuggestion >= 0 ? suggestions[activeSuggestion]?.url ?? webUrl : webUrl)
+                }
               }}
             />
+          {suggestionsOpen && (
+            <div id="web-history-suggestions" className="web-list web-suggestions" role="listbox" aria-label="URLの履歴候補">
+              {suggestions.length === 0 && <p className="placeholder">該当する履歴はありません。</p>}
+              {suggestions.map((entry, index) => (
+                <button key={entry.url} id={`web-history-option-${index}`} role="option" aria-selected={index === activeSuggestion}
+                  className="web-item-link" tabIndex={-1} title={entry.url}
+                  ref={element => { if (index === activeSuggestion) element?.scrollIntoView?.({ block: 'nearest' }) }}
+                  onMouseDown={e => e.preventDefault()} onClick={() => loadWeb(entry.url)}><Icon name="history" /><span>{entry.url}</span></button>
+              ))}
+            </div>
+          )}
+            </div>
             <IconButton icon="go" label="URLを開く" onClick={() => loadWeb()} />
+            <IconButton icon="folder" label="ブックマーク" aria-expanded={bookmarksOpen} aria-controls="web-bookmarks" onClick={() => setWebPanel(bookmarksOpen ? null : 'bookmarks')} />
+            <IconButton icon="history" label="履歴" aria-expanded={historyOpen} aria-controls="web-history" onClick={() => setWebPanel(historyOpen ? null : 'history')} />
             <IconButton icon="bookmark" label="ブックマークに追加"
               disabled={!loadedUrl}
               onClick={() => openBookmarkModal({ mode: 'add', name: currentUrl, url: currentUrl })}
             />
           </div>
-          <section className="web-section">
-            <button className="web-section-toggle" aria-expanded={bookmarksOpen} onClick={() => setBookmarksOpen((open) => !open)}>
-              ブックマーク {bookmarksOpen ? '▼' : '▶'}
-            </button>
-            {bookmarksOpen && (
+          {bookmarksOpen && (
+          <section id="web-bookmarks" className="web-section" aria-label="ブックマーク一覧">
               <div className="web-list">
                 {webBookmarks.length === 0 && <p className="placeholder">ブックマークはありません。</p>}
                 {webBookmarks.map((bookmark) => (
@@ -460,27 +526,25 @@ export function ReferencePane({
                   </div>
                 ))}
               </div>
-            )}
           </section>
-          <section className="web-section">
+          )}
+          {historyOpen && (
+          <section id="web-history" className="web-section" aria-label="履歴一覧">
             <div className="web-section-header">
-              <button className="web-section-toggle" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
-                履歴 {historyOpen ? '▼' : '▶'}
-              </button>
+              <span>履歴</span>
               {webHistory.length > 0 && <button onClick={clearHistory}>全削除</button>}
             </div>
-            {historyOpen && (
               <div className="web-list">
                 {webHistory.length === 0 && <p className="placeholder">履歴はありません。</p>}
                 {webHistory.map((entry) => (
                   <div className="web-row" key={entry.url}>
-                    <button className="web-item-link" title={entry.url} onClick={() => loadWeb(entry.url)}>{entry.url}</button>
+                    <button className="web-item-link web-history-link" title={entry.url} onClick={() => loadWeb(entry.url)}><Icon name="history" /><span>{entry.url}</span></button>
                     <button aria-label="この履歴を削除" onClick={() => setWebHistory(removeWebHistory(entry.url))}>×</button>
                   </div>
                 ))}
               </div>
-            )}
           </section>
+          )}
           {!bookmarkModal && webError && <p className="error-text">{webError}</p>}
           {loadedUrl && isTauri() ? (
             <>
@@ -489,7 +553,7 @@ export function ReferencePane({
                 <button className="link" onClick={() => { void openExternal(currentUrl).catch(() => setWebError('外部ブラウザを開けませんでした。')) }}>外部ブラウザで開く</button>
                 をご利用ください。
               </p>
-              <NativeWebReference url={loadedUrl} obscured={obscured || !!bookmarkModal} onLocation={recordLocation} />
+              <NativeWebReference url={loadedUrl} obscured={obscured || !!bookmarkModal || bookmarksOpen || historyOpen || suggestionsOpen} onLocation={recordLocation} />
             </>
           ) : loadedUrl ? (
             <>

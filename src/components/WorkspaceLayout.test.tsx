@@ -2,7 +2,7 @@
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultLayout, LAYOUT_PATTERNS, type LayoutConfig, type LayoutPattern } from '../lib/layout'
+import { createDefaultLayout, LAYOUT_PATTERNS, loadLayout, saveLayout, type LayoutConfig, type LayoutPattern } from '../lib/layout'
 import { streamExplanation } from '../lib/openai'
 import { ExplainPanel } from './ExplainPanel'
 import { WorkspaceLayout } from './WorkspaceLayout'
@@ -63,6 +63,47 @@ function setupDrag(pattern: LayoutPattern, divider: 0 | 1 = 0) {
 }
 
 describe('WorkspaceLayout', () => {
+  it('全配置の表示切替でDOM・入力を保持し、残った領域と境界を縮約する', () => {
+    for (const pattern of LAYOUT_PATTERNS) {
+      const layout = { ...createDefaultLayout(), pattern }
+      render(layout)
+      const editor = container.querySelector<HTMLInputElement>('[aria-label="editor"]')!
+      input(editor, 'keep draft')
+      editor.setSelectionRange(2, 5)
+      for (let mask = 1; mask <= 7; mask++) {
+        const visiblePanes = { reference: !!(mask & 1), editor: !!(mask & 2), explain: !!(mask & 4) }
+        act(() => root.render(<WorkspaceLayout layout={layout} onChange={vi.fn()} panes={plainPanes} visiblePanes={visiblePanes} />))
+        const count = Object.values(visiblePanes).filter(Boolean).length
+        expect(container.querySelectorAll('.workspace-pane:not([hidden])')).toHaveLength(count)
+        expect(container.querySelectorAll('[role="separator"]')).toHaveLength(count - 1)
+        expect(container.querySelector('[aria-label="editor"]')).toBe(editor)
+        expect(editor.value).toBe('keep draft')
+        expect([editor.selectionStart, editor.selectionEnd]).toEqual([2, 5])
+      }
+    }
+  })
+
+  it('2ペイン時の縮小限界でも保存した配置を再読込できる', () => {
+    for (const pattern of LAYOUT_PATTERNS) {
+      for (const hidden of ['reference', 'editor', 'explain'] as const) {
+        let layout = { ...createDefaultLayout(), pattern }
+        const visiblePanes = { reference: true, editor: true, explain: true, [hidden]: false }
+        const onChange = (next: LayoutConfig) => { layout = next }
+        for (let step = 0; step < 150; step++) {
+          act(() => root.render(<WorkspaceLayout layout={layout} onChange={onChange} panes={plainPanes} visiblePanes={visiblePanes} />))
+          const handle = separator()
+          const key = handle.getAttribute('aria-orientation') === 'vertical'
+            ? step < 50 ? 'ArrowLeft' : 'ArrowRight'
+            : step < 50 ? 'ArrowUp' : 'ArrowDown'
+          act(() => handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })))
+          saveLayout(layout)
+          expect(loadLayout()).toEqual(layout)
+        }
+        saveLayout(layout)
+        expect(loadLayout()).toEqual(layout)
+      }
+    }
+  })
   it('全パターン・全割り当てでDOM順と入力・選択範囲を保持する', () => {
     const layout = createDefaultLayout()
     render(layout)

@@ -18,20 +18,45 @@ import { ExtensionDialog } from './components/ExtensionDialog'
 import { ExtensionPrompt, type ExtensionPromptRequest } from './components/ExtensionPrompt'
 import { IconButton } from './components/Icon'
 import { HelpPanel } from './components/HelpPanel'
+import { ThemeMenu } from './components/ThemeMenu'
+import { ShortcutDialog } from './components/ShortcutPanel'
+import { matchesShortcutMenu } from './lib/shortcuts'
+import { loadPreferences, savePreferences, usePreferences } from './lib/preferences'
 import './App.css'
 
-const THEME_LABELS: Record<ThemePref, string> = {
-  light: 'テーマ: ライト',
-  dark: 'テーマ: ダーク',
-  system: 'テーマ: システム',
-}
-
 export default function App() {
+  const preferences = usePreferences()
+  const [themeOpen, setThemeOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const shortcutReturnFocus = useRef<HTMLElement | null>(null)
+  const [notice, setNotice] = useState<{ text: string; id: number } | null>(null)
+  const notify = useCallback((text: string) => setNotice({ text, id: Date.now() }), [])
+  const openShortcuts = useCallback(() => {
+    shortcutReturnFocus.current = document.activeElement as HTMLElement | null
+    setShortcutsOpen(true)
+  }, [])
+  const closeShortcuts = useCallback(() => {
+    setShortcutsOpen(false)
+    shortcutReturnFocus.current?.focus()
+  }, [])
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), 4000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+  const closePane = (id: 'reference' | 'explain') => {
+    try {
+      const current = loadPreferences()
+      savePreferences({ ...current, visiblePanes: { ...current.visiblePanes, [id]: false } })
+      document.querySelector<HTMLButtonElement>('.activity-bar button[aria-label="設定"]')?.focus()
+      notify('設定から再表示できます')
+    } catch { notify('表示設定を保存できませんでした') }
+  }
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   const [extensionManager] = useState(() => new ExtensionManager())
   const referencePort = useRef<ReferencePort>(null)
   const editorLanguage = useRef('ts')
-  const [sidebar, setSidebar] = useState<'files' | 'extensions' | 'settings' | 'layout' | 'theme' | 'help' | null>(null)
+  const [sidebar, setSidebar] = useState<'files' | 'extensions' | 'settings' | 'layout' | 'help' | null>(null)
   const [fileTarget, setFileTarget] = useState<HTMLDivElement | null>(null)
   const [saveTarget, setSaveTarget] = useState<HTMLDivElement | null>(null)
   const closeSidebar = () => {
@@ -40,6 +65,16 @@ export default function App() {
   }
   const [extensionError, setExtensionError] = useState('')
   const [extensionPrompt, setExtensionPrompt] = useState<ExtensionPromptRequest | null>(null)
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (shortcutsOpen || extensionPrompt || event.isComposing || event.keyCode === 229 || !matchesShortcutMenu(event)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      openShortcuts()
+    }
+    window.addEventListener('keydown', handleShortcut, true)
+    return () => window.removeEventListener('keydown', handleShortcut, true)
+  }, [shortcutsOpen, extensionPrompt, openShortcuts])
   const promptRef = useRef<ExtensionPromptRequest | null>(null)
   const promptSequence = useRef(0)
   const [layout, setLayout] = useState(loadLayout)
@@ -129,26 +164,25 @@ export default function App() {
     <div className="app">
       <div className="workbench">
       <nav className="activity-bar" aria-label="機能">
-        {(['files', 'extensions', 'layout', 'theme', 'settings', 'help'] as const).map(id => {
-          const label = { files: 'ファイル', extensions: '拡張機能', layout: 'レイアウト', theme: THEME_LABELS[themePref], settings: '設定', help: 'ヘルプ' }[id]
-          return <IconButton key={id} icon={id === 'theme' ? resolved === 'light' ? 'sun' : 'moon' : id} label={label}
-            aria-expanded={sidebar === id} aria-controls={`sidebar-${id}`} onClick={() => toggleSidebar(id)} />
+        {(['files', 'extensions', 'layout', 'shortcuts', 'help'] as const).map(id => {
+          const label = { files: 'ファイル', extensions: '拡張機能', layout: 'レイアウト', settings: '設定', shortcuts: 'ショートカット', help: 'ヘルプ' }[id]
+          return <IconButton key={id} icon={id} label={label}
+            aria-expanded={id === 'shortcuts' ? shortcutsOpen : sidebar === id} aria-controls={id === 'shortcuts' ? 'shortcut-dialog' : `sidebar-${id}`} onClick={() => id === 'shortcuts' ? openShortcuts() : toggleSidebar(id)} />
         })}
+        <ThemeMenu value={themePref} resolved={resolved} onChange={chooseTheme} onOpenChange={setThemeOpen} />
+        <IconButton icon="settings" label="設定" aria-expanded={sidebar === 'settings'} aria-controls="sidebar-settings" onClick={() => toggleSidebar('settings')} />
       </nav>
       <aside className="app-sidebar" hidden={!sidebar} aria-label="機能サイドバー" onKeyDown={e => {
-        if (e.key === 'Escape') { e.stopPropagation(); closeSidebar() }
+        if (e.key === 'Escape' && !e.nativeEvent.isComposing) { e.stopPropagation(); closeSidebar() }
       }}>
-        <div className="sidebar-heading"><span>{sidebar ? { files: 'ファイル', extensions: '拡張機能', layout: 'レイアウト', theme: 'テーマ', settings: '設定', help: 'ヘルプ' }[sidebar] : ''}</span><IconButton icon="close" label="サイドバーを閉じる" onClick={closeSidebar} /></div>
+        <div className="sidebar-heading"><span>{sidebar ? { files: 'ファイル', extensions: '拡張機能', layout: 'レイアウト', shortcuts: 'ショートカット', settings: '設定', help: 'ヘルプ' }[sidebar] : ''}</span><IconButton icon="close" label="サイドバーを閉じる" onClick={closeSidebar} /></div>
         <div id="sidebar-files" hidden={sidebar !== 'files'}><div ref={setFileTarget} /><div ref={setSaveTarget} /></div>
         <div id="sidebar-extensions" hidden={sidebar !== 'extensions'}>{sidebar === 'extensions' && <ExtensionDialog embedded manager={extensionManager} onClose={closeSidebar} onRun={(id, command) => {
           setExtensionError('')
           void extensionManager.run(id, command).catch(e => setExtensionError(e instanceof Error ? e.message : '拡張の実行に失敗しました。'))
         }} />}</div>
-        <div id="sidebar-settings" hidden={sidebar !== 'settings'}>{sidebar === 'settings' && <SettingsDialog embedded onClose={closeSidebar} />}</div>
+        <div id="sidebar-settings" hidden={sidebar !== 'settings'}>{sidebar === 'settings' && <SettingsDialog embedded onClose={closeSidebar} onSaved={() => notify('設定を保存しました')} />}</div>
         <div id="sidebar-layout" hidden={sidebar !== 'layout'}>{sidebar === 'layout' && <LayoutDialog embedded layout={layout} onApply={next => changeLayout(next, true)} onClose={closeSidebar} />}</div>
-        <div id="sidebar-theme" hidden={sidebar !== 'theme'} className="sidebar-panel">
-          {(['light', 'dark', 'system'] as const).map(pref => <IconButton key={pref} icon={pref === 'light' ? 'sun' : pref === 'dark' ? 'moon' : 'system'} label={THEME_LABELS[pref]} aria-pressed={themePref === pref} onClick={() => chooseTheme(pref)} />)}
-        </div>
         <div id="sidebar-help" hidden={sidebar !== 'help'}>{sidebar === 'help' && <HelpPanel />}</div>
       </aside>
       <div className="workspace-content">
@@ -157,9 +191,10 @@ export default function App() {
       <main className="app-main">
         <WorkspaceLayout
           layout={layout}
+          visiblePanes={preferences.visiblePanes}
           onChange={changeLayout}
           panes={{
-            reference: <ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} obscured={!!extensionPrompt} sidebarTarget={fileTarget} extensionPort={referencePort} onExtensionChange={onExtensionReferenceChange} />,
+            reference: <ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} obscured={!!extensionPrompt || shortcutsOpen || themeOpen || !preferences.visiblePanes.reference} sidebarTarget={fileTarget} extensionPort={referencePort} onExtensionChange={onExtensionReferenceChange} onClose={() => closePane('reference')} />,
             editor: (
               <ShakyoEditor
                 sidebarTarget={saveTarget}
@@ -173,13 +208,17 @@ export default function App() {
                 allowReferenceRestore={!reference?.fromExtension}
               />
             ),
-            explain: <ExplainPanel getCode={getCode} onOpenSettings={() => setSidebar("settings")} />,
+            explain: <ExplainPanel getCode={getCode} onOpenSettings={() => setSidebar("settings")} onClose={() => closePane('explain')} />,
           }}
         />
       </main>
       </div>
       </div>
       {extensionPrompt && <ExtensionPrompt key={extensionPrompt.id} request={extensionPrompt} />}
+      {shortcutsOpen && <ShortcutDialog onClose={closeShortcuts} onSaved={() => notify('ショートカットを保存しました')} />}
+      <div className="snackbar-region" role="status" aria-live="polite" aria-atomic="true">
+        {notice && <div className="snackbar" key={notice.id}>{notice.text}</div>}
+      </div>
     </div>
   )
 }
