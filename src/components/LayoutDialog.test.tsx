@@ -58,19 +58,53 @@ describe('LayoutDialog', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('6パターンを選択でき、配置図と割り当てを維持する', () => {
+  it('9パターンを選択でき、配置図と割り当てを維持する', () => {
     const layout = createDefaultLayout()
     const { onApply } = render(layout)
-    expect(container.querySelector('select')!.options).toHaveLength(6)
+    expect(container.querySelector('select')!.options).toHaveLength(9)
     for (const pattern of LAYOUT_PATTERNS) {
       changeSelect(0, pattern)
       const preview = container.querySelector('[role="img"]')!
       expect(preview.classList.contains(`layout-preview-${pattern}`)).toBe(true)
-      for (const pane of layout.panes) expect(preview.textContent).toContain(PANE_LABELS[pane])
+      if (pattern === 'editorOnly') expect(preview.textContent).toContain(PANE_LABELS.editor)
+      else {
+        const visibleCount = pattern.endsWith('2') ? 2 : 3
+        for (const pane of layout.panes.slice(0, visibleCount)) expect(preview.textContent).toContain(PANE_LABELS[pane])
+      }
     }
     clickButton('適用')
     expect(onApply.mock.calls[0][0].ratios).toEqual(layout.ratios)
-    expect(onApply.mock.calls[0][0].panes).toEqual(layout.panes)
+    expect(onApply.mock.calls[0][0]).toMatchObject({ pattern: 'editorOnly', panes: ['editor', 'reference', 'explain'] })
+  })
+
+  it('2画面はエディタを必須とし、伴って表示するペインと配置順を選べる', () => {
+    const { onApply } = render()
+    changeSelect(0, 'columns2')
+    expect(container.querySelectorAll('select')).toHaveLength(3)
+    expect(Array.from(container.querySelectorAll('select')).slice(1).map(select => select.value))
+      .toEqual(['reference', 'editor'])
+    changeSelect(1, 'editor')
+    expect(Array.from(container.querySelectorAll('select')).slice(1).map(select => select.value))
+      .toEqual(['editor', 'reference'])
+    changeSelect(2, 'explain')
+    expect(Array.from(container.querySelectorAll('select')).slice(1).map(select => select.value))
+      .toEqual(['editor', 'explain'])
+    clickButton('適用')
+    expect(onApply.mock.calls[0][0]).toMatchObject({
+      version: 2, pattern: 'columns2', panes: ['editor', 'explain', 'reference'],
+    })
+  })
+
+  it('1画面は写経エディタ固定でペイン選択を表示しない', () => {
+    const { onApply } = render()
+    changeSelect(0, 'editorOnly')
+    expect(container.querySelectorAll('select')).toHaveLength(1)
+    expect(container.querySelector('[role="img"]')!.textContent).toContain('写経エディタ')
+    expect(container.querySelector('[role="img"]')!.textContent).not.toContain('お手本')
+    clickButton('適用')
+    expect(onApply.mock.calls[0][0]).toMatchObject({
+      version: 2, pattern: 'editorOnly', panes: ['editor', 'reference', 'explain'],
+    })
   })
 
   it.each(['キャンセル', 'Escape', 'backdrop'])('%sで変更を破棄する', (method) => {

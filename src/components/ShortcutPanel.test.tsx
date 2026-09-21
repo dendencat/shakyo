@@ -22,6 +22,16 @@ it('captures a key chord and saves it', async () => {
   await press('z', { altKey: true }); await save()
   expect(loadShortcuts().undo).toBe('Alt-z'); expect(saved).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce()
 })
+it('can replace the same shortcut repeatedly, including after a validation error', async () => {
+  await press('z', { altKey: true })
+  await press('f', { ctrlKey: true })
+  await save()
+  expect(container.querySelector('[role=alert]')!.textContent).toContain('複数')
+  await press('y', { altKey: true })
+  await save()
+  expect(loadShortcuts().undo).toBe('Alt-y')
+  expect(saved).toHaveBeenCalledOnce()
+})
 it('keeps the dialog open for duplicate and reserved keys', async () => {
   await press('f', { ctrlKey: true }); await save()
   expect(container.querySelector('[role=alert]')!.textContent).toContain('複数')

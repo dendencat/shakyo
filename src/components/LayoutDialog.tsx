@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import {
+  changeLayoutPattern,
   createDefaultLayout,
+  getActivePanes,
   getSlotLabels,
   LAYOUT_PATTERNS,
   PANE_LABELS,
@@ -20,6 +22,9 @@ const previewAreas: Record<LayoutPattern, string> = {
   bottom: '"slot1 slot2" "slot0 slot0"',
   columns: '"slot0 slot1 slot2"',
   rows: '"slot0" "slot1" "slot2"',
+  columns2: '"slot0 slot1"',
+  rows2: '"slot0" "slot1"',
+  editorOnly: '"slot0"',
 }
 
 export function LayoutDialog({ layout, onApply, onClose, embedded = false }: {
@@ -31,6 +36,7 @@ export function LayoutDialog({ layout, onApply, onClose, embedded = false }: {
   const [draft, setDraft] = useState(layout)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose, !embedded)
   const slotLabels = getSlotLabels(draft.pattern)
+  const activePanes = getActivePanes(draft)
 
   return (
     <div className={embedded ? undefined : "modal-backdrop"} onClick={embedded ? undefined : onClose}>
@@ -47,7 +53,7 @@ export function LayoutDialog({ layout, onApply, onClose, embedded = false }: {
           分割パターン
           <select value={draft.pattern} onChange={(e) => {
             const pattern = e.target.value as LayoutPattern
-            setDraft((current) => ({ ...current, pattern }))
+            setDraft((current) => changeLayoutPattern(current, pattern))
           }}>
             {LAYOUT_PATTERNS.map((pattern) => (
               <option key={pattern} value={pattern}>{PATTERN_LABELS[pattern]}</option>
@@ -60,14 +66,14 @@ export function LayoutDialog({ layout, onApply, onClose, embedded = false }: {
           aria-label={`配置図：${slotLabels.map((label, slot) => `${label}は${PANE_LABELS[draft.panes[slot]]}`).join('、')}`}
           style={{ gridTemplateAreas: previewAreas[draft.pattern] }}
         >
-          {draft.panes.map((pane, slot) => (
+          {activePanes.map((pane, slot) => (
             <div key={slot} style={{ gridArea: `slot${slot}` }} aria-hidden="true">
               <span>{slotLabels[slot]}</span>
               <strong>{PANE_LABELS[pane]}</strong>
             </div>
           ))}
         </div>
-        {slotLabels.map((label, slot) => (
+        {draft.pattern !== 'editorOnly' && slotLabels.map((label, slot) => (
           <label className="field" key={slot}>
             {label}
             <select value={draft.panes[slot]} onChange={(e) => {
@@ -80,7 +86,9 @@ export function LayoutDialog({ layout, onApply, onClose, embedded = false }: {
             </select>
           </label>
         ))}
-        <p className="hint">使用中の要素を選ぶと、その枠と入れ替わります。「適用」で配置を保存します。</p>
+        <p className="hint">{draft.pattern === 'editorOnly'
+          ? '写経エディタを1画面で表示します。「適用」で配置を保存します。'
+          : '使用中の要素を選ぶと、その枠と入れ替わります。「適用」で配置を保存します。'}</p>
         <div className="modal-actions layout-dialog-actions">
           <button onClick={() => setDraft(createDefaultLayout())}>初期配置に戻す</button>
           <button onClick={onClose}>キャンセル</button>

@@ -2,15 +2,18 @@ import { Icon, IconButton } from './Icon'
 import { emptyNavigation, visit, step, normalizeBrowserUrl } from '../lib/browserNavigation'
 import { nativeBrowserAction } from '../lib/nativeReference'
 import { createPortal } from 'react-dom'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
+import type { Ref } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { PdfViewer } from './PdfViewer'
+import { EpubViewer } from './EpubViewer'
+import { PaneTitle } from './PaneTitle'
 import { LANGUAGE_OPTIONS, languageExtension, langIdFromFilename } from '../lib/langs'
 import type { LangId } from '../lib/langs'
 import { CODE_SAMPLES } from '../lib/samples'
 import { loadPasteReference, savePasteReference } from '../lib/pasteReference'
 import type { PasteReference } from '../lib/pasteReference'
-import { readTextReferenceFile } from '../lib/referenceFile'
+import { readReferenceFile, REFERENCE_FILE_ACCEPT } from '../lib/referenceFile'
 import {
   addWebBookmark,
   addWebHistory,
@@ -28,10 +31,16 @@ import { NativeWebReference } from './NativeWebReference'
 import type { ReferencePort } from '../extensions/referenceAdapter'
 import { usePreferences } from '../lib/preferences'
 import './WebReference.css'
+import './ReferenceReader.css'
 
 type ReferenceContent =
   | { kind: 'text'; name: string; text: string; lang: LangId | null; fromExtension?: boolean }
   | { kind: 'pdf'; name: string; data: ArrayBuffer }
+  | { kind: 'epub'; name: string; data: ArrayBuffer }
+
+export type ReferencePaneCommands = {
+  openFilePicker: () => void
+}
 
 type Tab = 'file' | 'paste' | 'web'
 
@@ -94,6 +103,8 @@ export function ReferencePane({
   extensionPort,
   onExtensionChange,
   onClose,
+  commandsRef,
+  onEnsureVisible,
 }: {
   onReferenceChange?: (ref: { name: string; text: string; fromExtension?: boolean } | null) => void
   resolvedTheme: 'light' | 'dark'
@@ -102,6 +113,8 @@ export function ReferencePane({
   extensionPort?: React.RefObject<ReferencePort | null>
   onExtensionChange?: () => void
   onClose?: () => void
+  commandsRef?: Ref<ReferencePaneCommands>
+  onEnsureVisible?: () => void
 }) {
   const preferences = usePreferences()
   const [tab, setTab] = useState<Tab>('file')
@@ -154,6 +167,8 @@ export function ReferencePane({
   const [fileError, setFileError] = useState<string | null>(null)
   const [sampleSelectValue, setSampleSelectValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [readingControlsVisible, setReadingControlsVisible] = useState(true)
+  const readingControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialPasteRef = useRef<PasteReference | null | undefined>(undefined)
   if (initialPasteRef.current === undefined) {
     initialPasteRef.current = loadPasteReference()
@@ -163,6 +178,29 @@ export function ReferencePane({
   const [pasteLang, setPasteLang] = useState<LangId>(() => initialPasteRef.current?.lang ?? 'ts')
   const [pasteEditing, setPasteEditing] = useState(() => initialPasteRef.current == null)
   const [pasteError, setPasteError] = useState<string | null>(null)
+  const readingActive = preferences.readingMode && tab === 'file' && (content?.kind === 'pdf' || content?.kind === 'epub')
+
+  const openFilePicker = useCallback(() => {
+    onEnsureVisible?.()
+    fileInputRef.current?.click()
+  }, [onEnsureVisible])
+  useImperativeHandle(commandsRef, () => ({ openFilePicker }), [openFilePicker])
+
+  const showReadingControls = useCallback(() => {
+    if (!readingActive) return
+    setReadingControlsVisible(true)
+    if (readingControlsTimerRef.current) clearTimeout(readingControlsTimerRef.current)
+    readingControlsTimerRef.current = setTimeout(() => setReadingControlsVisible(false), 2_000)
+  }, [readingActive])
+
+  useEffect(() => {
+    if (readingActive) showReadingControls()
+    else setReadingControlsVisible(true)
+    return () => {
+      if (readingControlsTimerRef.current) clearTimeout(readingControlsTimerRef.current)
+      readingControlsTimerRef.current = null
+    }
+  }, [readingActive, showReadingControls])
 
   useEffect(() => {
     onReferenceChange?.(
@@ -177,16 +215,15 @@ export function ReferencePane({
   const openFile = async (file: File) => {
     setFileError(null)
     try {
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        setContent({ kind: 'pdf', name: file.name, data: await file.arrayBuffer() })
-      } else {
+      const loaded = await readReferenceFile(file)
+      if (loaded.kind === 'text') {
         setContent({
           kind: 'text',
           name: file.name,
-          text: await readTextReferenceFile(file),
+          text: loaded.text,
           lang: langIdFromFilename(file.name),
         })
-      }
+      } else setContent({ ...loaded, name: file.name })
     } catch (e) {
       setFileError(`ファイルの読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`)
     }
@@ -217,6 +254,7 @@ export function ReferencePane({
         if (tab === 'web') return currentUrl ? { kind: 'web', url: currentUrl } : null
         if (tab === 'paste') return pasteRef && !pasteEditing ? { kind: 'text', name: '貼り付けテキスト', text: pasteRef.text, language: pasteRef.lang } : null
         if (content?.kind === 'pdf') return { kind: 'pdf', name: content.name }
+        if (content?.kind === 'epub') return null
         return content ? { kind: 'text', name: content.name, text: content.text, language: content.lang } : null
       },
       openText: input => {
@@ -309,7 +347,7 @@ export function ReferencePane({
   const fileControls = (
     <div className="file-controls">
           <div className="toolbar">
-            <button className="primary" onClick={() => fileInputRef.current?.click()}>
+            <button className="primary" onClick={openFilePicker}>
               {sidebarTarget ? 'ファイルを開く…' : '参照…'}
             </button>
             <select value={sampleSelectValue} onChange={(e) => selectSample(e.target.value)}>
@@ -326,8 +364,14 @@ export function ReferencePane({
   )
 
   return (
-    <section className="pane reference-pane" style={{ '--reference-font-size': `${preferences.fontSize}px` } as React.CSSProperties}>
-      <input ref={fileInputRef} type="file" hidden aria-label="お手本ファイル"
+    <section
+      className={`pane reference-pane${readingActive ? ' reference-reading-mode' : ''}${readingControlsVisible ? ' reader-controls-visible' : ''}`}
+      style={{ '--reference-font-size': `${preferences.fontSize}px` } as React.CSSProperties}
+      onPointerMove={showReadingControls}
+      onClick={showReadingControls}
+      onFocusCapture={showReadingControls}
+    >
+      <input ref={fileInputRef} type="file" hidden aria-label="お手本ファイル" accept={REFERENCE_FILE_ACCEPT}
         onChange={e => {
           const file = e.target.files?.[0]
           if (file) { setTab('file'); void openFile(file) }
@@ -335,7 +379,7 @@ export function ReferencePane({
         }} />
       {sidebarTarget && createPortal(fileControls, sidebarTarget)}
       <div className="pane-header">
-        <h2>お手本</h2>
+        <PaneTitle icon="reference" label="お手本" />
         <div className="tab-bar" role="tablist">
           <button role="tab" aria-selected={tab === 'file'} className={tab === 'file' ? 'active' : ''} onClick={() => setTab('file')}>
             ファイル
@@ -365,14 +409,14 @@ export function ReferencePane({
           }}>
           {!sidebarTarget && fileControls}
           {sidebarTarget && <div className="toolbar">
-            <button className="primary" onClick={() => fileInputRef.current?.click()}>参照…</button>
+            <button className="primary" onClick={openFilePicker}>参照…</button>
             {content && <span className="file-name" title={content.name}>{content.name}</span>}
           </div>}
           {fileError && <p className="error-text" role="alert">{fileError}</p>}
           <div className="reference-content">
             {!content && !fileError && (
               <p className="placeholder">
-                コードファイル・テキスト・PDFをここにドラッグ＆ドロップするか、「参照…」で開いてください。
+                コードファイル・テキスト・PDF・EPUBをここにドラッグ＆ドロップするか、「参照…」で開いてください。
               </p>
             )}
             {content?.kind === 'text' && (
@@ -386,7 +430,8 @@ export function ReferencePane({
                 className="reference-code"
               />
             )}
-            {content?.kind === 'pdf' && <PdfViewer data={content.data} />}
+            {content?.kind === 'pdf' && <PdfViewer data={content.data} readingMode={preferences.readingMode} />}
+            {content?.kind === 'epub' && <EpubViewer data={content.data} readingMode={preferences.readingMode} />}
           </div>
         </div>
       )}

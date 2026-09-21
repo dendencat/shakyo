@@ -1,24 +1,30 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LangId } from '../lib/langs'
 import { deleteSnapshot, listSnapshots, saveSnapshot } from '../lib/snapshots'
+import type { Snapshot } from '../lib/snapshots'
 import { useFocusTrap } from '../lib/useFocusTrap'
 
 export function SaveLoadDialog({
   code,
   lang,
   onLoad,
+  onSaved,
   onClose,
   embedded = false,
+  focusNameSignal = 0,
 }: {
   code: string
   lang: LangId
-  onLoad: (s: { code: string; lang: LangId }) => void
+  onLoad: (s: Snapshot) => void
+  onSaved?: (s: Snapshot) => void
   embedded?: boolean
   onClose: () => void
+  focusNameSignal?: number
 }) {
   const [name, setName] = useState('')
   const [snapshots, setSnapshots] = useState(() => listSnapshots())
   const [error, setError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose, !embedded)
   const trimmedName = name.trim()
   const canSave = trimmedName.length > 0
@@ -29,6 +35,12 @@ export function SaveLoadDialog({
 
   const refresh = () => setSnapshots(listSnapshots())
 
+  useEffect(() => {
+    if (focusNameSignal <= 0) return
+    nameRef.current?.focus()
+    nameRef.current?.select()
+  }, [focusNameSignal])
+
   const saveInApp = () => {
     if (!canSave) return
     if (
@@ -38,9 +50,10 @@ export function SaveLoadDialog({
       return
     }
     try {
-      saveSnapshot(trimmedName, lang, code)
+      const snapshot = saveSnapshot(trimmedName, lang, code)
       setError(null)
       refresh()
+      onSaved?.(snapshot)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -58,11 +71,11 @@ export function SaveLoadDialog({
     URL.revokeObjectURL(url)
   }
 
-  const load = (snapshot: { code: string; lang: LangId }) => {
+  const load = (snapshot: Snapshot) => {
     if (code && code !== snapshot.code && !window.confirm('現在の写経内容を置き換えます。よろしいですか?')) {
       return
     }
-    onLoad({ code: snapshot.code, lang: snapshot.lang })
+    onLoad(snapshot)
     onClose()
   }
 
@@ -90,7 +103,7 @@ export function SaveLoadDialog({
         <h2>保存と読み込み</h2>
         <label className="field">
           名前
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!embedded} />
+          <input ref={nameRef} type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!embedded} />
         </label>
         {error && <p className="error-text">{error}</p>}
         <div className="modal-actions">

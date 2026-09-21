@@ -22,6 +22,21 @@
   grid-template-rows: repeat(3, minmax(0, 1fr));
 }
 
+.layout-preview-columns2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: 1fr;
+}
+
+.layout-preview-rows2 {
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.layout-preview-editorOnly {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
 .layout-preview > div {
   display: flex;
   flex-direction: column;

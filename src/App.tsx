@@ -3,12 +3,12 @@ import type { ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { WorkspaceLayout } from './components/WorkspaceLayout'
 import { LayoutDialog } from './components/LayoutDialog'
 import { ReferencePane } from './components/ReferencePane'
-import { ShakyoEditor } from './components/ShakyoEditor'
+import { ShakyoEditor, type ShakyoEditorCommands } from './components/ShakyoEditor'
 import { ExplainPanel } from './components/ExplainPanel'
 import { SettingsDialog } from './components/SettingsDialog'
 import { loadThemePref, resolveTheme, saveThemePref } from './lib/theme'
 import type { ThemePref } from './lib/theme'
-import { loadLayout, saveLayout } from './lib/layout'
+import { loadLayout, restorePaneLayout, saveLayout } from './lib/layout'
 import type { LayoutConfig } from './lib/layout'
 import { ExtensionManager } from './extensions/manager'
 import type { Json } from './extensions/api'
@@ -20,17 +20,20 @@ import { IconButton } from './components/Icon'
 import { HelpPanel } from './components/HelpPanel'
 import { ThemeMenu } from './components/ThemeMenu'
 import { ShortcutDialog } from './components/ShortcutPanel'
-import { matchesShortcutMenu } from './lib/shortcuts'
+import { matchesShortcut, matchesShortcutMenu, useShortcuts } from './lib/shortcuts'
 import { loadPreferences, savePreferences, usePreferences } from './lib/preferences'
+import { applyAlwaysOnTop } from './lib/alwaysOnTop'
 import './App.css'
 
 export default function App() {
   const preferences = usePreferences()
+  const shortcuts = useShortcuts()
   const [themeOpen, setThemeOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const shortcutReturnFocus = useRef<HTMLElement | null>(null)
-  const [notice, setNotice] = useState<{ text: string; id: number } | null>(null)
-  const notify = useCallback((text: string) => setNotice({ text, id: Date.now() }), [])
+  const noticeSequence = useRef(0)
+  const [notice, setNotice] = useState<{ text: string; kind: 'success' | 'error'; id: number } | null>(null)
+  const notify = useCallback((text: string, kind: 'success' | 'error' = 'success') => setNotice({ text, kind, id: ++noticeSequence.current }), [])
   const openShortcuts = useCallback(() => {
     shortcutReturnFocus.current = document.activeElement as HTMLElement | null
     setShortcutsOpen(true)
@@ -44,15 +47,23 @@ export default function App() {
     const timer = window.setTimeout(() => setNotice(null), 4000)
     return () => window.clearTimeout(timer)
   }, [notice])
+  useEffect(() => {
+    void applyAlwaysOnTop(preferences.alwaysOnTop).catch(() => {
+      notify('常に最前面の設定を適用できませんでした', 'error')
+    })
+  }, [preferences.alwaysOnTop, notify])
   const closePane = (id: 'reference' | 'explain') => {
     try {
       const current = loadPreferences()
       savePreferences({ ...current, visiblePanes: { ...current.visiblePanes, [id]: false } })
       document.querySelector<HTMLButtonElement>('.activity-bar button[aria-label="設定"]')?.focus()
-      notify('設定から再表示できます')
-    } catch { notify('表示設定を保存できませんでした') }
+      notify('設定から再表示できます', 'success')
+    } catch { notify('表示設定を保存できませんでした', 'error') }
   }
   const editorRef = useRef<ReactCodeMirrorRef>(null)
+  const editorCommands = useRef<ShakyoEditorCommands>(null)
+  const referenceCommands = useRef<{ openFilePicker: () => void }>(null)
+  const explainCommands = useRef<{ focusExplain: () => void }>(null)
   const [extensionManager] = useState(() => new ExtensionManager())
   const referencePort = useRef<ReferencePort>(null)
   const editorLanguage = useRef('ts')
@@ -65,16 +76,6 @@ export default function App() {
   }
   const [extensionError, setExtensionError] = useState('')
   const [extensionPrompt, setExtensionPrompt] = useState<ExtensionPromptRequest | null>(null)
-  useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if (shortcutsOpen || extensionPrompt || event.isComposing || event.keyCode === 229 || !matchesShortcutMenu(event)) return
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      openShortcuts()
-    }
-    window.addEventListener('keydown', handleShortcut, true)
-    return () => window.removeEventListener('keydown', handleShortcut, true)
-  }, [shortcutsOpen, extensionPrompt, openShortcuts])
   const promptRef = useRef<ExtensionPromptRequest | null>(null)
   const promptSequence = useRef(0)
   const [layout, setLayout] = useState(loadLayout)
@@ -157,8 +158,60 @@ export default function App() {
       setLayoutError(null)
     } catch {
       setLayoutError('レイアウトを保存できませんでした。現在の配置は使えますが、次回起動時に復元できない場合があります。')
+      notify('レイアウトを保存できませんでした', 'error')
     }
-  }, [])
+  }, [notify])
+
+  const revealPane = useCallback((id: 'reference' | 'explain') => {
+    try {
+      const current = loadPreferences()
+      if (!current.visiblePanes[id]) {
+        savePreferences({ ...current, visiblePanes: { ...current.visiblePanes, [id]: true } })
+      }
+      setLayout(previous => {
+        const next = restorePaneLayout(previous, id)
+        if (next !== previous) saveLayout(next)
+        return next
+      })
+      setLayoutError(null)
+    } catch {
+      notify('ペインの表示設定を保存できませんでした', 'error')
+    }
+  }, [notify])
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (shortcutsOpen || extensionPrompt || event.isComposing || event.keyCode === 229) return
+      if (matchesShortcutMenu(event)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        openShortcuts()
+        return
+      }
+      const target = event.target
+      if ((target instanceof Element && target.closest('[aria-modal="true"]')) || target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return
+
+      let run: (() => void) | undefined
+      if (matchesShortcut(event, shortcuts.clear)) run = () => editorCommands.current?.clear()
+      else if (matchesShortcut(event, shortcuts.save)) run = () => editorCommands.current?.save()
+      else if (matchesShortcut(event, shortcuts.saveAs)) run = () => editorCommands.current?.saveAs()
+      else if (matchesShortcut(event, shortcuts.openReference)) run = () => {
+        revealPane('reference')
+        requestAnimationFrame(() => referenceCommands.current?.openFilePicker())
+      }
+      else if (matchesShortcut(event, shortcuts.openExplain)) run = () => {
+        revealPane('explain')
+        requestAnimationFrame(() => explainCommands.current?.focusExplain())
+      }
+      if (!run) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      run()
+    }
+    window.addEventListener('keydown', handleShortcut, true)
+    return () => window.removeEventListener('keydown', handleShortcut, true)
+  }, [shortcutsOpen, extensionPrompt, openShortcuts, revealPane, shortcuts])
 
   return (
     <div className="app">
@@ -181,7 +234,7 @@ export default function App() {
           setExtensionError('')
           void extensionManager.run(id, command).catch(e => setExtensionError(e instanceof Error ? e.message : '拡張の実行に失敗しました。'))
         }} />}</div>
-        <div id="sidebar-settings" hidden={sidebar !== 'settings'}>{sidebar === 'settings' && <SettingsDialog embedded onClose={closeSidebar} onSaved={() => notify('設定を保存しました')} />}</div>
+        <div id="sidebar-settings" hidden={sidebar !== 'settings'}>{sidebar === 'settings' && <SettingsDialog embedded onClose={closeSidebar} onSaved={() => notify('設定を保存しました', 'success')} onError={message => notify(message, 'error')} />}</div>
         <div id="sidebar-layout" hidden={sidebar !== 'layout'}>{sidebar === 'layout' && <LayoutDialog embedded layout={layout} onApply={next => changeLayout(next, true)} onClose={closeSidebar} />}</div>
         <div id="sidebar-help" hidden={sidebar !== 'help'}>{sidebar === 'help' && <HelpPanel />}</div>
       </aside>
@@ -194,7 +247,7 @@ export default function App() {
           visiblePanes={preferences.visiblePanes}
           onChange={changeLayout}
           panes={{
-            reference: <ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} obscured={!!extensionPrompt || shortcutsOpen || themeOpen || !preferences.visiblePanes.reference} sidebarTarget={fileTarget} extensionPort={referencePort} onExtensionChange={onExtensionReferenceChange} onClose={() => closePane('reference')} />,
+            reference: <ReferencePane commandsRef={referenceCommands} onEnsureVisible={() => revealPane('reference')} onReferenceChange={setReference} resolvedTheme={resolved} obscured={!!extensionPrompt || shortcutsOpen || themeOpen || !preferences.visiblePanes.reference} sidebarTarget={fileTarget} extensionPort={referencePort} onExtensionChange={onExtensionReferenceChange} onClose={() => closePane('reference')} />,
             editor: (
               <ShakyoEditor
                 sidebarTarget={saveTarget}
@@ -206,18 +259,20 @@ export default function App() {
                 onExtensionChange={onExtensionEditorChange}
                 onLanguageChange={onEditorLanguageChange}
                 allowReferenceRestore={!reference?.fromExtension}
+                onNotify={notify}
+                commandsRef={editorCommands}
               />
             ),
-            explain: <ExplainPanel getCode={getCode} onOpenSettings={() => setSidebar("settings")} onClose={() => closePane('explain')} />,
+            explain: <ExplainPanel commandsRef={explainCommands} getCode={getCode} onOpenSettings={() => setSidebar("settings")} onClose={() => closePane('explain')} />,
           }}
         />
       </main>
       </div>
       </div>
       {extensionPrompt && <ExtensionPrompt key={extensionPrompt.id} request={extensionPrompt} />}
-      {shortcutsOpen && <ShortcutDialog onClose={closeShortcuts} onSaved={() => notify('ショートカットを保存しました')} />}
-      <div className="snackbar-region" role="status" aria-live="polite" aria-atomic="true">
-        {notice && <div className="snackbar" key={notice.id}>{notice.text}</div>}
+      {shortcutsOpen && <ShortcutDialog onClose={closeShortcuts} onSaved={() => notify('ショートカットを保存しました', 'success')} onError={message => notify(message, 'error')} />}
+      <div className="snackbar-region" aria-atomic="true">
+        {notice && <div className={`snackbar snackbar-${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} aria-live={notice.kind === 'error' ? 'assertive' : 'polite'} key={notice.id}>{notice.text}</div>}
       </div>
     </div>
   )

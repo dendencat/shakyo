@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import type { ReactCodeMirrorRef, ViewUpdate } from '@uiw/react-codemirror'
 import { LANGUAGE_OPTIONS, languageExtension } from '../lib/langs'
@@ -10,15 +10,23 @@ import { accuracyPercent, progressPercent, wordsPerMinute } from '../lib/stats'
 import { loadProgress, saveProgress } from '../lib/progress'
 import { diffAgainstReference, normalizeReference } from '../lib/diff'
 import { SaveLoadDialog } from './SaveLoadDialog'
+import { saveSnapshot, type Snapshot } from '../lib/snapshots'
 import { extensionRevision } from '../extensions/editorAdapter'
 import { loadPreferences, savePreferences, usePreferences, type Preferences } from '../lib/preferences'
 import { editorShortcutExtensions, useShortcuts } from '../lib/shortcuts'
 import { editorPreferenceExtensions } from '../lib/editorPreferences'
+import { PaneTitle } from './PaneTitle'
 
 function initialLang(): LangId {
   const saved = localStorage.getItem(KEY_EDITOR_LANG)
   if (saved && LANGUAGE_OPTIONS.some((o) => o.id === saved)) return saved as LangId
   return 'ts'
+}
+
+export type ShakyoEditorCommands = {
+  clear: () => void
+  save: () => void
+  saveAs: () => void
 }
 
 export function ShakyoEditor({
@@ -31,6 +39,8 @@ export function ShakyoEditor({
   onExtensionChange,
   onLanguageChange,
   allowReferenceRestore = true,
+  commandsRef,
+  onNotify,
 }: {
   sidebarTarget?: HTMLElement | null
   onOpenFiles?: () => void
@@ -41,6 +51,8 @@ export function ShakyoEditor({
   onExtensionChange?: (revision: number) => void
   onLanguageChange?: (language: string) => void
   allowReferenceRestore?: boolean
+  commandsRef?: React.Ref<ShakyoEditorCommands>
+  onNotify?: (text: string, kind: 'success' | 'error') => void
 }) {
   const { editorMode, indentStyle, indentWidth, autoIndent, fontSize } = usePreferences()
   const shortcuts = useShortcuts()
@@ -49,6 +61,8 @@ export function ShakyoEditor({
   const [lang, setLang] = useState<LangId>(initialLang)
   const [checkEnabled, setCheckEnabled] = useState(false)
   const [saveLoadOpen, setSaveLoadOpen] = useState(false)
+  const [saveAsSignal, setSaveAsSignal] = useState(0)
+  const [currentSnapshot, setCurrentSnapshot] = useState<Pick<Snapshot, 'id' | 'name'> | null>(null)
   const [accuracy, setAccuracy] = useState<number | null>(null)
   const [, setTick] = useState(0)
   const saveTimer = useRef<number | undefined>(undefined)
@@ -179,6 +193,28 @@ export function ShakyoEditor({
     resetSession()
   }
 
+  const saveAs = () => {
+    if (onOpenFiles) onOpenFiles()
+    else setSaveLoadOpen(true)
+    setSaveAsSignal(value => value + 1)
+  }
+
+  const overwrite = () => {
+    if (!currentSnapshot) {
+      saveAs()
+      return
+    }
+    try {
+      const snapshot = saveSnapshot(currentSnapshot.name, lang, code, currentSnapshot.id)
+      setCurrentSnapshot({ id: snapshot.id, name: snapshot.name })
+      onNotify?.(`「${snapshot.name}」を上書き保存しました`, 'success')
+    } catch (error) {
+      onNotify?.(error instanceof Error ? error.message : '上書き保存に失敗しました', 'error')
+    }
+  }
+
+  useImperativeHandle(commandsRef, () => ({ clear, save: overwrite, saveAs }))
+
   const progress =
     normalizedReferenceLength != null ? progressPercent(code.length, normalizedReferenceLength) : null
   const wpm =
@@ -190,6 +226,11 @@ export function ShakyoEditor({
           embedded={!!sidebarTarget}
           code={code}
           lang={lang}
+          focusNameSignal={saveAsSignal}
+          onSaved={snapshot => {
+            setCurrentSnapshot({ id: snapshot.id, name: snapshot.name })
+            onNotify?.(`「${snapshot.name}」を保存しました`, 'success')
+          }}
           onLoad={(snapshot) => {
             window.clearTimeout(saveTimer.current)
             setCode(snapshot.code)
@@ -200,6 +241,7 @@ export function ShakyoEditor({
                 ? accuracyPercent(diffAgainstReference(snapshot.code, referenceText), snapshot.code.length)
                 : null
             setAccuracy(loadedAccuracy)
+            setCurrentSnapshot({ id: snapshot.id, name: snapshot.name })
             resetSession()
           }}
           onClose={() => setSaveLoadOpen(false)}
@@ -209,7 +251,7 @@ export function ShakyoEditor({
     <>
       <section className="pane editor-pane">
         <div className="pane-header">
-          <h2>写経エディタ</h2>
+          <PaneTitle icon="editor" label="写経エディタ" />
           <div className="toolbar">
             <label>
               言語:{' '}

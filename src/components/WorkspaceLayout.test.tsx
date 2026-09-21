@@ -2,12 +2,26 @@
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultLayout, LAYOUT_PATTERNS, loadLayout, saveLayout, type LayoutConfig, type LayoutPattern } from '../lib/layout'
+import {
+  changeLayoutPattern,
+  createDefaultLayout,
+  getActivePanes,
+  LAYOUT_PATTERNS,
+  loadLayout,
+  saveLayout,
+  THREE_PANE_PATTERNS,
+  type LayoutConfig,
+  type LayoutPattern,
+} from '../lib/layout'
 import { streamExplanation } from '../lib/openai'
 import { ExplainPanel } from './ExplainPanel'
 import { WorkspaceLayout } from './WorkspaceLayout'
 
-vi.mock('../lib/settings', () => ({ loadSettings: () => ({ apiKey: 'test', model: 'test' }) }))
+vi.mock('../lib/settings', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../lib/settings')>(),
+  loadSettings: () => ({ apiKey: 'test', model: 'test', reasoningEffort: 'none', allowHighPerformanceModels: false }),
+  useSettings: () => ({ apiKey: 'test', model: 'test', reasoningEffort: 'none', allowHighPerformanceModels: false }),
+}))
 vi.mock('../lib/openai', () => ({ streamExplanation: vi.fn(), streamChat: vi.fn(), buildExplanationMessages: vi.fn() }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -65,7 +79,7 @@ function setupDrag(pattern: LayoutPattern, divider: 0 | 1 = 0) {
 describe('WorkspaceLayout', () => {
   it('全配置の表示切替でDOM・入力を保持し、残った領域と境界を縮約する', () => {
     for (const pattern of LAYOUT_PATTERNS) {
-      const layout = { ...createDefaultLayout(), pattern }
+      const layout = changeLayoutPattern(createDefaultLayout(), pattern)
       render(layout)
       const editor = container.querySelector<HTMLInputElement>('[aria-label="editor"]')!
       input(editor, 'keep draft')
@@ -73,9 +87,9 @@ describe('WorkspaceLayout', () => {
       for (let mask = 1; mask <= 7; mask++) {
         const visiblePanes = { reference: !!(mask & 1), editor: !!(mask & 2), explain: !!(mask & 4) }
         act(() => root.render(<WorkspaceLayout layout={layout} onChange={vi.fn()} panes={plainPanes} visiblePanes={visiblePanes} />))
-        const count = Object.values(visiblePanes).filter(Boolean).length
+        const count = getActivePanes(layout).filter(pane => visiblePanes[pane]).length
         expect(container.querySelectorAll('.workspace-pane:not([hidden])')).toHaveLength(count)
-        expect(container.querySelectorAll('[role="separator"]')).toHaveLength(count - 1)
+        expect(container.querySelectorAll('[role="separator"]')).toHaveLength(Math.max(0, count - 1))
         expect(container.querySelector('[aria-label="editor"]')).toBe(editor)
         expect(editor.value).toBe('keep draft')
         expect([editor.selectionStart, editor.selectionEnd]).toEqual([2, 5])
@@ -84,9 +98,9 @@ describe('WorkspaceLayout', () => {
   })
 
   it('2ペイン時の縮小限界でも保存した配置を再読込できる', () => {
-    for (const pattern of LAYOUT_PATTERNS) {
+    for (const pattern of THREE_PANE_PATTERNS) {
       for (const hidden of ['reference', 'editor', 'explain'] as const) {
-        let layout = { ...createDefaultLayout(), pattern }
+        let layout: LayoutConfig = { ...createDefaultLayout(), pattern }
         const visiblePanes = { reference: true, editor: true, explain: true, [hidden]: false }
         const onChange = (next: LayoutConfig) => { layout = next }
         for (let step = 0; step < 150; step++) {
@@ -97,10 +111,16 @@ describe('WorkspaceLayout', () => {
             : step < 50 ? 'ArrowUp' : 'ArrowDown'
           act(() => handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })))
           saveLayout(layout)
-          expect(loadLayout()).toEqual(layout)
+          expect(loadLayout()).toEqual({ ...layout, lastPaneLayouts: {
+            reference: { pattern: layout.pattern, panes: layout.panes },
+            explain: { pattern: layout.pattern, panes: layout.panes },
+          } })
         }
         saveLayout(layout)
-        expect(loadLayout()).toEqual(layout)
+        expect(loadLayout()).toEqual({ ...layout, lastPaneLayouts: {
+          reference: { pattern: layout.pattern, panes: layout.panes },
+          explain: { pattern: layout.pattern, panes: layout.panes },
+        } })
       }
     }
   })
@@ -118,7 +138,7 @@ describe('WorkspaceLayout', () => {
       ['editor', 'reference', 'explain'], ['editor', 'explain', 'reference'],
       ['explain', 'reference', 'editor'], ['explain', 'editor', 'reference'],
     ]
-    for (const pattern of LAYOUT_PATTERNS) {
+    for (const pattern of THREE_PANE_PATTERNS) {
       for (const panes of assignments) {
         render({ ...layout, pattern, panes })
         const current = Array.from(container.querySelectorAll<HTMLElement>('.workspace-pane'))
@@ -132,6 +152,15 @@ describe('WorkspaceLayout', () => {
         expect(editor.value).toBe('const value = 1')
         expect([editor.selectionStart, editor.selectionEnd]).toEqual([2, 8])
       }
+    }
+    for (const pattern of ['columns2', 'rows2', 'editorOnly'] as const) {
+      render(changeLayoutPattern(layout, pattern))
+      const current = Array.from(container.querySelectorAll<HTMLElement>('.workspace-pane'))
+      current.forEach((element, index) => expect(element).toBe(originalPanes[index]))
+      expect(container.querySelector('[aria-label="reference"]')).toBe(reference)
+      expect(container.querySelector('[aria-label="editor"]')).toBe(editor)
+      expect(editor.value).toBe('const value = 1')
+      expect([editor.selectionStart, editor.selectionEnd]).toEqual([2, 8])
     }
   })
 
@@ -158,7 +187,8 @@ describe('WorkspaceLayout', () => {
     })
     expect(explain.textContent).toContain('最初の解説')
     for (const pattern of LAYOUT_PATTERNS) {
-      render({ ...createDefaultLayout(), pattern, panes: ['explain', 'reference', 'editor'] }, vi.fn(), panes)
+      const next = changeLayoutPattern({ ...createDefaultLayout(), panes: ['explain', 'reference', 'editor'] }, pattern)
+      render(next, vi.fn(), panes)
       expect(container.querySelector('[data-pane="explain"]')).toBe(explain)
       expect(signal.aborted).toBe(false)
       expect(question.value).toBe('途中の質問')
@@ -186,6 +216,27 @@ describe('WorkspaceLayout', () => {
     expect(onChange.mock.calls[0][1]).toBe(true)
   })
 
+  it.each([
+    ['columns2', 'ArrowRight', 0.52, 'vertical'],
+    ['rows2', 'ArrowDown', 0.52, 'horizontal'],
+  ] as const)('%sは1本の境界をキーボードでリサイズする', (pattern, key, expected, orientation) => {
+    const layout = changeLayoutPattern(createDefaultLayout(), pattern)
+    const onChange = render(layout)
+    expect(container.querySelectorAll('[role="separator"]')).toHaveLength(1)
+    expect(separator().getAttribute('aria-orientation')).toBe(orientation)
+    act(() => separator().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })))
+    expect(onChange.mock.calls[0][0].ratios[pattern][0]).toBeCloseTo(expected)
+    expect(onChange.mock.calls[0][1]).toBe(true)
+  })
+
+  it('1画面は写経エディタだけを表示し、境界を表示しない', () => {
+    render(changeLayoutPattern(createDefaultLayout(), 'editorOnly'))
+    expect(container.querySelector('[data-pane="editor"]')?.hasAttribute('hidden')).toBe(false)
+    expect(container.querySelector('[data-pane="reference"]')?.hasAttribute('hidden')).toBe(true)
+    expect(container.querySelector('[data-pane="explain"]')?.hasAttribute('hidden')).toBe(true)
+    expect(container.querySelectorAll('[role="separator"]')).toHaveLength(0)
+  })
+
   it.each([0, 1] as const)('横3列の境界%iを累積比率でドラッグし、終了時だけ保存する', (divider) => {
     const { onChange, handle } = setupDrag('columns', divider)
     expect(handle.getAttribute('aria-valuenow')).toBe('33')
@@ -201,6 +252,18 @@ describe('WorkspaceLayout', () => {
     expect(container.querySelector('.workspace-resize-overlay')).toBeNull()
     render(onChange.mock.calls.at(-1)![0], onChange)
     expect(handle.getAttribute('aria-valuenow')).toBe(divider === 0 ? '40' : '42')
+  })
+
+  it.each([
+    ['columns2', 412, 522],
+    ['rows2', 512, 422],
+  ] as const)('%sの境界をポインターでリサイズし、終了時だけ保存する', (pattern, x, y) => {
+    const { onChange, handle } = setupDrag(pattern)
+    pointer(handle, 'pointermove', x, y)
+    expect(onChange.mock.calls.at(-1)![0].ratios[pattern][0]).toBeCloseTo(400 / 1005)
+    expect(onChange.mock.calls.at(-1)![1]).toBe(false)
+    pointer(handle, 'pointerup', x, y)
+    expect(onChange.mock.calls.at(-1)![1]).toBe(true)
   })
 
   it.each(['pointercancel', 'lostpointercapture', 'blur', 'Escape'] as const)('%sでドラッグを取り消し、初期値へ戻して保存しない', (reason) => {

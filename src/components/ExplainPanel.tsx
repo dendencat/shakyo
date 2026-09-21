@@ -1,18 +1,36 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { buildExplanationMessages, streamChat, streamExplanation } from '../lib/openai'
-import { loadSettings } from '../lib/settings'
+import { normalizeSettings, useSettings, type ReasoningEffort } from '../lib/settings'
 import { SafeMarkdown } from './SafeMarkdown'
 import { IconButton } from './Icon'
+import { PaneTitle } from './PaneTitle'
+
+const EFFORT_LABELS: Record<ReasoningEffort, string> = {
+  none: 'none（最速）',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max',
+}
+
+export interface ExplainPanelCommands {
+  focusExplain(): void
+}
 
 export function ExplainPanel({
   getCode,
   onOpenSettings,
   onClose,
+  commandsRef,
 }: {
   getCode: () => { code: string; isSelection: boolean } | null
   onOpenSettings: () => void
   onClose?: () => void
+  commandsRef?: Ref<ExplainPanelCommands>
 }) {
+  const settings = useSettings()
+  const effectiveSettings = normalizeSettings(settings)
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -21,8 +39,13 @@ export function ExplainPanel({
   const [followups, setFollowups] = useState<{ question: string; answer: string }[]>([])
   const [question, setQuestion] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  const explainButtonRef = useRef<HTMLButtonElement | null>(null)
   const codeRef = useRef<string | null>(null)
   const copyTimerRef = useRef<number | undefined>(undefined)
+
+  useImperativeHandle(commandsRef, () => ({
+    focusExplain: () => explainButtonRef.current?.focus(),
+  }), [])
 
   useEffect(
     () => () => {
@@ -33,8 +56,7 @@ export function ExplainPanel({
   )
 
   const explain = async () => {
-    const settings = loadSettings()
-    if (!settings.apiKey) {
+    if (!effectiveSettings.apiKey) {
       setError('OpenAI APIキーが未設定です。右上の「設定」から登録してください。')
       return
     }
@@ -54,9 +76,9 @@ export function ExplainPanel({
     abortRef.current = controller
     try {
       for await (const chunk of streamExplanation({
-        apiKey: settings.apiKey,
-        model: settings.model,
-        reasoningEffort: settings.reasoningEffort,
+        apiKey: effectiveSettings.apiKey,
+        model: effectiveSettings.model,
+        reasoningEffort: effectiveSettings.reasoningEffort,
         code: target.code,
         signal: controller.signal,
       })) {
@@ -76,8 +98,7 @@ export function ExplainPanel({
     const nextQuestion = question.trim()
     if (running || !nextQuestion || text === '' || codeRef.current == null) return
 
-    const settings = loadSettings()
-    if (!settings.apiKey) {
+    if (!effectiveSettings.apiKey) {
       setError('OpenAI APIキーが未設定です。右上の「設定」から登録してください。')
       return
     }
@@ -101,9 +122,9 @@ export function ExplainPanel({
     abortRef.current = controller
     try {
       for await (const chunk of streamChat({
-        apiKey: settings.apiKey,
-        model: settings.model,
-        reasoningEffort: settings.reasoningEffort,
+        apiKey: effectiveSettings.apiKey,
+        model: effectiveSettings.model,
+        reasoningEffort: effectiveSettings.reasoningEffort,
         messages,
         signal: controller.signal,
       })) {
@@ -158,7 +179,11 @@ export function ExplainPanel({
   return (
     <section className="explain-panel">
       <div className="pane-header">
-        <h2>コードの意味解説</h2>
+        <PaneTitle icon="aiExplain" label="コードの意味解説" />
+        <div className="explain-settings-badges" aria-label="AI解説設定">
+          <span className="badge" title={effectiveSettings.model}>モデル: {effectiveSettings.model}</span>
+          <span className="badge">エフォート: {EFFORT_LABELS[effectiveSettings.reasoningEffort]}</span>
+        </div>
         {onClose && <IconButton icon="close" label="解説を閉じる" onClick={onClose} />}
         <div className="toolbar">
           {sourceLabel && <span className="badge">{sourceLabel}</span>}
@@ -188,7 +213,7 @@ export function ExplainPanel({
           {running ? (
             <button onClick={stop}>停止</button>
           ) : (
-            <button className="primary" onClick={() => void explain()}>
+            <button ref={explainButtonRef} className="primary" onClick={() => void explain()}>
               解説する
             </button>
           )}
