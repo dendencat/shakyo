@@ -10,6 +10,8 @@ export interface Preferences {
   autoIndent: boolean
   fontSize: number
   showHistorySuggestions: boolean
+  readingMode: boolean
+  alwaysOnTop: boolean
 }
 export const KEY_PREFERENCES = 'shakyo.preferences'
 const CHANGE_EVENT = 'shakyo:preferences'
@@ -17,6 +19,7 @@ export const defaultPreferences = (): Preferences => ({
   visiblePanes: { reference: true, editor: true, explain: true },
   editorMode: 'normal', indentStyle: 'spaces', indentWidth: 2,
   autoIndent: true, fontSize: 14, showHistorySuggestions: true,
+  readingMode: false, alwaysOnTop: false,
 })
 export function loadPreferences(): Preferences {
   const defaults = defaultPreferences()
@@ -35,6 +38,8 @@ export function loadPreferences(): Preferences {
       autoIndent: typeof value.autoIndent === 'boolean' ? value.autoIndent : true,
       fontSize: Number.isInteger(value.fontSize) && value.fontSize >= 10 && value.fontSize <= 32 ? value.fontSize : 14,
       showHistorySuggestions: typeof value.showHistorySuggestions === 'boolean' ? value.showHistorySuggestions : true,
+      readingMode: typeof value.readingMode === 'boolean' ? value.readingMode : false,
+      alwaysOnTop: typeof value.alwaysOnTop === 'boolean' ? value.alwaysOnTop : false,
     }
   } catch { return defaults }
 }

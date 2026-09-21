@@ -40,11 +40,11 @@ const subscription = () => JSON.parse(container.querySelector('[data-subscriber]
 const storage = (key: string | null) => act(async () => window.dispatchEvent(new StorageEvent('storage', { key })))
 
 it('cancels edited preferences and OpenAI fields without saving them', async () => {
-  saveSettings({ apiKey: '', model: 'existing-model', reasoningEffort: 'low' })
+  saveSettings({ apiKey: '', model: 'existing-model', reasoningEffort: 'low', allowHighPerformanceModels: false })
   const existing = loadSettings()
   await render()
   await change('エディタモード', 'vim')
-  await change('モデル', 'gpt-5.4')
+  await change('モデル', 'gpt-5.6-terra')
   await clickLabel('文字を拡大')
   await clickText('キャンセル')
   expect(close).toHaveBeenCalledOnce()
@@ -70,7 +70,7 @@ it('saves all preference groups and updates a same-window subscriber', async () 
 
 it('allows closing both auxiliary panes while keeping the editor visible', async () => {
   await render()
-  const boxes = () => [...container.querySelectorAll<HTMLInputElement>('fieldset:first-of-type input[type="checkbox"]')]
+  const boxes = () => [...container.querySelectorAll<HTMLInputElement>('fieldset:first-of-type input[type="checkbox"]')].slice(0, 2)
   await act(async () => boxes()[0].click())
   await act(async () => boxes()[1].click())
   expect(boxes().map(box => box.checked)).toEqual([false, false])
@@ -96,9 +96,9 @@ it('refreshes clean settings and subscribers from another tab, including storage
   await storage(KEY_PREFERENCES)
   expect(field('エディタモード').value).toBe('vscode')
   expect(subscription().fontSize).toBe(22)
-  localStorage.setItem('shakyo.openai.model', 'other-model')
+  localStorage.setItem('shakyo.openai.model', 'gpt-5.6-terra')
   await storage('shakyo.openai.model')
-  expect(field('モデル').value).toBe('other-model')
+  expect(field('モデル').value).toBe('gpt-5.6-terra')
   localStorage.clear()
   await storage(null)
   expect(field('エディタモード').value).toBe('normal')
@@ -108,15 +108,47 @@ it('refreshes clean settings and subscribers from another tab, including storage
 it('preserves dirty settings while other-tab updates still refresh live subscribers', async () => {
   await render()
   await change('エディタモード', 'vim')
-  await change('モデル', 'gpt-5.4')
+  await change('モデル', 'gpt-5.6-terra')
   localStorage.setItem(KEY_PREFERENCES, JSON.stringify({ ...defaultPreferences(), editorMode: 'emacs' }))
   localStorage.setItem('shakyo.openai.model', 'other-model')
   await storage(KEY_PREFERENCES)
   await storage('shakyo.openai.model')
   expect(field('エディタモード').value).toBe('vim')
-  expect(field('モデル').value).toBe('gpt-5.4')
+  expect(field('モデル').value).toBe('gpt-5.6-terra')
   expect(subscription().editorMode).toBe('emacs')
   await clickText('キャンセル')
   expect(loadPreferences().editorMode).toBe('emacs')
-  expect(loadSettings().model).toBe('other-model')
+  expect(loadSettings().model).toBe('gpt-5.6-luna')
+})
+
+it('shows only standard models until high-performance models are enabled', async () => {
+  await render()
+  const modelOptions = () => [...field('モデル').querySelectorAll('option')].map(option => option.value)
+  expect(modelOptions()).toEqual(['gpt-5.6-luna', 'gpt-5.6-terra'])
+  await toggle('高性能なモデルを使用する')
+  expect(modelOptions()).toEqual(['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-6-astra'])
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('請求額の上限')
+})
+
+it('resets a selected premium model to Luna when high-performance access is disabled', async () => {
+  await render()
+  await toggle('高性能なモデルを使用する')
+  await change('モデル', 'gpt-5.6-sol')
+  await toggle('高性能なモデルを使用する')
+  expect(field('モデル').value).toBe('gpt-5.6-luna')
+})
+
+it('migrates an old saved model to Luna without injecting it into the dropdown', async () => {
+  localStorage.setItem('shakyo.openai.model', 'gpt-5.4')
+  await render()
+  expect(field('モデル').value).toBe('gpt-5.6-luna')
+  expect([...field('モデル').querySelectorAll('option')].map(option => option.value)).not.toContain('gpt-5.4')
+})
+
+it('shows reading mode and disables always-on-top in the web build', async () => {
+  await render()
+  await toggle('リーディングモード')
+  expect((field('リーディングモード') as HTMLInputElement).checked).toBe(true)
+  expect((field('常に最前面に表示') as HTMLInputElement).disabled).toBe(true)
+  expect(container.textContent).toContain('デスクトップ版のみ')
 })

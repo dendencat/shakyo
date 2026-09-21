@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   DEFAULT_MODEL,
+  HIGH_PERFORMANCE_MODELS,
   isSettingsStorageKey,
   loadSettings,
+  normalizeReasoningEffort,
   saveSettings,
+  STANDARD_MODELS,
   type ReasoningEffort,
 } from '../lib/settings'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { isTauri } from '../lib/openExternal'
 import { KEY_PREFERENCES, loadPreferences, savePreferences, type Preferences, type EditorMode } from '../lib/preferences'
 import { PANE_LABELS } from '../lib/layout'
 
-const MODEL_OPTIONS = [DEFAULT_MODEL, 'gpt-5.4-nano', 'gpt-5.4'] as const
-
-export function SettingsDialog({ onClose, onSaved, embedded = false }: { onClose: () => void; onSaved?: () => void; embedded?: boolean }) {
+export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: { onClose: () => void; onSaved?: () => void; onError?: (message: string) => void; embedded?: boolean }) {
   const [settings, setSettings] = useState(loadSettings)
   const [preferences, setPreferences] = useState(loadPreferences)
   const [error, setError] = useState('')
@@ -48,12 +50,18 @@ export function SettingsDialog({ onClose, onSaved, embedded = false }: { onClose
       saveSettings({ ...settings, apiKey: settings.apiKey.trim(), model: settings.model.trim() || DEFAULT_MODEL })
       savePreferences(preferences)
     } catch {
-      setError('設定を保存できませんでした。保存領域を確認して再度お試しください。')
+      const message = '設定を保存できませんでした。保存領域を確認して再度お試しください。'
+      setError(message)
+      onError?.(message)
       return
     }
     onSaved?.()
     onClose()
   }
+
+  const modelOptions = settings.allowHighPerformanceModels
+    ? [...STANDARD_MODELS, ...HIGH_PERFORMANCE_MODELS]
+    : [...STANDARD_MODELS]
 
   return (
     <div className={embedded ? undefined : "modal-backdrop"} onClick={embedded ? undefined : onClose}>
@@ -81,6 +89,16 @@ export function SettingsDialog({ onClose, onSaved, embedded = false }: { onClose
               <button type="button" onClick={() => changePreferences({ fontSize: 14 })}>リセット</button>
             </div>
           </div>
+          <label className="preference-check">
+            <input type="checkbox" checked={preferences.readingMode}
+              onChange={event => changePreferences({ readingMode: event.target.checked })} />
+            リーディングモード
+          </label>
+          <label className="preference-check">
+            <input type="checkbox" checked={preferences.alwaysOnTop} disabled={!isTauri()}
+              onChange={event => changePreferences({ alwaysOnTop: event.target.checked })} />
+            常に最前面に表示{!isTauri() && '（デスクトップ版のみ）'}
+          </label>
         </fieldset>
         <fieldset className="preferences-group"><legend>エディタ</legend>
           <label className="field">エディタモード<select value={preferences.editorMode} onChange={e => changePreferences({ editorMode: e.target.value as EditorMode })}>
@@ -118,15 +136,46 @@ export function SettingsDialog({ onClose, onSaved, embedded = false }: { onClose
             value={settings.model}
             onChange={(e) => {
               setDirty(true)
-              setSettings((s) => ({ ...s, model: e.target.value }))
+              const model = e.target.value
+              setSettings((s) => ({
+                ...s,
+                model,
+                reasoningEffort: normalizeReasoningEffort(s.reasoningEffort, model),
+              }))
             }}
           >
-            {MODEL_OPTIONS.map(model => <option key={model} value={model}>{model}{model === DEFAULT_MODEL ? '（既定）' : ''}</option>)}
-            {!MODEL_OPTIONS.some(model => model === settings.model) && <option value={settings.model}>{settings.model}（保存済みのモデル）</option>}
+            {modelOptions.map(model => <option key={model} value={model}>{model}{model === DEFAULT_MODEL ? '（既定）' : ''}</option>)}
           </select>
         </label>
         <details className="field-advanced">
           <summary>詳細設定</summary>
+          <label className="preference-check">
+            <input
+              type="checkbox"
+              checked={settings.allowHighPerformanceModels}
+              onChange={(event) => {
+                setDirty(true)
+                setSettings((current) => {
+                  const allowHighPerformanceModels = event.target.checked
+                  const model = !allowHighPerformanceModels && HIGH_PERFORMANCE_MODELS.some(value => value === current.model)
+                    ? DEFAULT_MODEL
+                    : current.model
+                  return {
+                    ...current,
+                    allowHighPerformanceModels,
+                    model,
+                    reasoningEffort: normalizeReasoningEffort(current.reasoningEffort, model),
+                  }
+                })
+              }}
+            />
+            高性能なモデルを使用する
+          </label>
+          {settings.allowHighPerformanceModels && (
+            <p className="error-text" role="alert">
+              高性能モデルは利用料金が大幅に高くなる場合があります。このアプリには請求額の上限を強制する機能がありません。
+            </p>
+          )}
           <label className="field">
             解説の深さ
             <select
@@ -136,10 +185,12 @@ export function SettingsDialog({ onClose, onSaved, embedded = false }: { onClose
                 setSettings((s) => ({ ...s, reasoningEffort: e.target.value as ReasoningEffort }))
               }}
             >
-              <option value="minimal">最速(推奨)</option>
+              <option value="none">最速（推奨）</option>
               <option value="low">速い・少し考える</option>
               <option value="medium">じっくり</option>
-              <option value="high">最も深く考える(遅い)</option>
+              <option value="high">深く考える</option>
+              <option value="xhigh">より深く考える（遅い）</option>
+              <option value="max">最も深く考える（最も遅い）</option>
             </select>
           </label>
           <p className="hint">

@@ -6,6 +6,8 @@ import {
   KEY_DRAFT,
   KEY_EDITOR_LANG,
   loadSettings,
+  normalizeReasoningEffort,
+  normalizeSettings,
   saveSettings,
 } from './settings'
 
@@ -20,48 +22,97 @@ describe('settings', () => {
         apiKey: '',
         model: DEFAULT_MODEL,
         reasoningEffort: DEFAULT_REASONING_EFFORT,
+        allowHighPerformanceModels: false,
       })
     })
 
-    it('保存済みの値を読み込む', () => {
+    it('保存済みのAPIキーとeffortを読み込み、旧モデルは既定へ移行する', () => {
       localStorage.setItem('shakyo.openai.apiKey', 'sk-test123')
       localStorage.setItem('shakyo.openai.model', 'gpt-5.4')
       localStorage.setItem('shakyo.openai.reasoningEffort', 'high')
       expect(loadSettings()).toEqual({
         apiKey: 'sk-test123',
-        model: 'gpt-5.4',
+        model: DEFAULT_MODEL,
         reasoningEffort: 'high',
+        allowHighPerformanceModels: false,
       })
     })
 
-    it('reasoningEffortが不正な値の場合はminimalにフォールバックする', () => {
+    it('reasoningEffortが不正な値の場合はnoneにフォールバックする', () => {
       localStorage.setItem('shakyo.openai.reasoningEffort', 'invalid-value')
-      expect(loadSettings().reasoningEffort).toBe('minimal')
+      expect(loadSettings().reasoningEffort).toBe('none')
+    })
+
+    it('旧minimalをnoneへ移行する', () => {
+      localStorage.setItem('shakyo.openai.reasoningEffort', 'minimal')
+      expect(loadSettings().reasoningEffort).toBe('none')
+    })
+
+    it('高性能モデルが無効なとき既知の高性能モデルをLunaへ戻す', () => {
+      localStorage.setItem('shakyo.openai.model', 'gpt-5.6-sol')
+      expect(loadSettings().model).toBe(DEFAULT_MODEL)
     })
   })
 
   describe('saveSettings', () => {
     it('設定値を保存し、再読込で同じ値が返る', () => {
-      saveSettings({ apiKey: 'sk-abc', model: 'gpt-5.4-nano', reasoningEffort: 'low' })
-      expect(loadSettings()).toEqual({ apiKey: 'sk-abc', model: 'gpt-5.4-nano', reasoningEffort: 'low' })
+      saveSettings({ apiKey: 'sk-abc', model: 'gpt-5.6-terra', reasoningEffort: 'low', allowHighPerformanceModels: false })
+      expect(loadSettings()).toEqual({ apiKey: 'sk-abc', model: 'gpt-5.6-terra', reasoningEffort: 'low', allowHighPerformanceModels: false })
     })
 
     it('modelが空文字の場合はデフォルトモデルを保存する', () => {
-      saveSettings({ apiKey: 'sk-abc', model: '', reasoningEffort: DEFAULT_REASONING_EFFORT })
+      saveSettings({ apiKey: 'sk-abc', model: '', reasoningEffort: DEFAULT_REASONING_EFFORT, allowHighPerformanceModels: false })
       expect(loadSettings()).toEqual({
         apiKey: 'sk-abc',
         model: DEFAULT_MODEL,
         reasoningEffort: DEFAULT_REASONING_EFFORT,
+        allowHighPerformanceModels: false,
       })
     })
 
     it('apiKeyが空文字でも保存できる', () => {
-      saveSettings({ apiKey: '', model: 'gpt-5.4-nano', reasoningEffort: DEFAULT_REASONING_EFFORT })
+      saveSettings({ apiKey: '', model: 'gpt-5.6-terra', reasoningEffort: DEFAULT_REASONING_EFFORT, allowHighPerformanceModels: false })
       expect(loadSettings()).toEqual({
         apiKey: '',
-        model: 'gpt-5.4-nano',
+        model: 'gpt-5.6-terra',
         reasoningEffort: DEFAULT_REASONING_EFFORT,
+        allowHighPerformanceModels: false,
       })
+    })
+
+    it('高性能モデルの許可とAstra向けの実効エフォートを保存する', () => {
+      saveSettings({ apiKey: '', model: 'gpt-6-astra', reasoningEffort: 'none', allowHighPerformanceModels: true })
+      expect(loadSettings()).toEqual({
+        apiKey: '',
+        model: 'gpt-6-astra',
+        reasoningEffort: 'low',
+        allowHighPerformanceModels: true,
+      })
+    })
+  })
+
+  describe('normalization', () => {
+    it('Astraのnoneだけをlowへ正規化する', () => {
+      expect(normalizeReasoningEffort('none', 'gpt-6-astra')).toBe('low')
+      expect(normalizeReasoningEffort('none', 'gpt-5.6-sol')).toBe('none')
+    })
+
+    it('高性能設定を無効化するとSolからLunaへ戻す', () => {
+      expect(normalizeSettings({
+        apiKey: '',
+        model: 'gpt-5.6-sol',
+        reasoningEffort: 'max',
+        allowHighPerformanceModels: false,
+      }).model).toBe(DEFAULT_MODEL)
+    })
+
+    it('許可リスト外の旧・未知モデルをLunaへ移行する', () => {
+      expect(normalizeSettings({
+        apiKey: '',
+        model: 'gpt-5.4-mini',
+        reasoningEffort: 'high',
+        allowHighPerformanceModels: true,
+      }).model).toBe(DEFAULT_MODEL)
     })
   })
 
@@ -95,6 +146,10 @@ describe('settings', () => {
 
     it('解説の深さのキーの場合はtrueを返す', () => {
       expect(isSettingsStorageKey('shakyo.openai.reasoningEffort')).toBe(true)
+    })
+
+    it('高性能モデル設定のキーの場合はtrueを返す', () => {
+      expect(isSettingsStorageKey('shakyo.openai.highPerformanceModels')).toBe(true)
     })
   })
 })

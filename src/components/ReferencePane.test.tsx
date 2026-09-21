@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ReferencePane } from './ReferencePane'
+import type { ReferencePaneCommands } from './ReferencePane'
 import { addWebHistory, addWebBookmark, loadWebHistory, loadWebBookmarks } from '../lib/webReference'
 
 const mocks = vi.hoisted(() => ({ preferences: { showHistorySuggestions: true, fontSize: 14 }, native: false }))
@@ -105,10 +106,30 @@ it('opens dropped text and PDF files and preserves the reference on a read error
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('読み込みエラー')
   expect(container.querySelector('.file-name')?.textContent).toBe('query.sql')
   const pdf = new File([], 'reference.PDF')
-  Object.defineProperty(pdf, 'arrayBuffer', { value: async () => new ArrayBuffer(8) })
+  Object.defineProperty(pdf, 'arrayBuffer', { value: async () => new TextEncoder().encode('%PDF-x00').buffer })
   await dropFile(pdf)
   expect(container.querySelector('[data-pdf-bytes]')?.getAttribute('data-pdf-bytes')).toBe('8')
   expect(container.querySelector('[role="alert"]')).toBeNull()
+})
+
+it('rejects a dropped file outside the allowlist', async () => {
+  await act(async () => root.render(<ReferencePane resolvedTheme="light" />))
+  await dropFile(new File(['not an image'], 'picture.png'))
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('この形式のファイルは開けません')
+  expect(container.querySelector('.file-name')).toBeNull()
+})
+
+it('exposes a file picker command that reveals the pane before clicking the input', async () => {
+  const commandsRef = { current: null as ReferencePaneCommands | null }
+  const order: string[] = []
+  await act(async () => root.render(
+    <ReferencePane resolvedTheme="light" commandsRef={commandsRef} onEnsureVisible={() => order.push('visible')} />,
+  ))
+  const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')!
+  vi.spyOn(fileInput, 'click').mockImplementation(() => { order.push('click') })
+  await act(async () => commandsRef.current?.openFilePicker())
+  expect(order).toEqual(['visible', 'click'])
+  expect(fileInput.accept).toContain('.epub')
 })
 
 it('offers a close action only when supplied by the layout', async () => {

@@ -1,0 +1,155 @@
+.pdf-viewer,
+.epub-viewer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.reader-toolbar {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(5px);
+}
+
+.reader-toolbar button {
+  min-width: 32px;
+}
+
+.reader-toolbar .reader-zoom-reset {
+  min-width: 58px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-toolbar output {
+  color: var(--text-sub);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-toolbar select {
+  min-width: 100px;
+  max-width: min(260px, 45%);
+}
+
+.pdf-pages {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+}
+
+.pdf-viewer .pdf-page-slot,
+.pdf-viewer .pdf-page {
+  max-width: none;
+}
+
+.reader-paginated .pdf-pages {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+}
+
+.epub-viewer {
+  height: 100%;
+  min-height: 240px;
+}
+
+.epub-rendition {
+  flex: 1;
+  min-height: 180px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.epub-rendition > div {
+  height: 100%;
+}
+
+.reader-edge {
+  position: absolute;
+  z-index: 6;
+  top: 50%;
+  width: 44px;
+  height: 72px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  box-shadow: var(--shadow);
+  font-size: 28px;
+  transform: translateY(-50%);
+}
+
+.reader-edge-previous {
+  left: 8px;
+}
+
+.reader-edge-next {
+  right: 8px;
+}
+
+.reference-reading-mode {
+  position: relative;
+}
+
+.reference-reading-mode > .pane-header {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  right: 0;
+  left: 0;
+  background: color-mix(in srgb, var(--bg-sub) 94%, transparent);
+  backdrop-filter: blur(5px);
+}
+
+.reference-reading-mode > .pane-body > .toolbar,
+.reference-reading-mode .reader-toolbar,
+.reference-reading-mode .reader-edge,
+.reference-reading-mode > .pane-header {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.reference-reading-mode > .pane-header,
+.reference-reading-mode > .pane-body > .toolbar,
+.reference-reading-mode .reader-toolbar {
+  transform: translateY(-6px);
+}
+
+.reference-reading-mode.reader-controls-visible > .pane-header,
+.reference-reading-mode.reader-controls-visible > .pane-body > .toolbar,
+.reference-reading-mode.reader-controls-visible .reader-toolbar,
+.reference-reading-mode.reader-controls-visible .reader-edge,
+.reference-reading-mode:hover > .pane-header,
+.reference-reading-mode:hover > .pane-body > .toolbar,
+.reference-reading-mode:hover .reader-toolbar,
+.reference-reading-mode:hover .reader-edge,
+.reference-reading-mode:focus-within > .pane-header,
+.reference-reading-mode:focus-within > .pane-body > .toolbar,
+.reference-reading-mode:focus-within .reader-toolbar,
+.reference-reading-mode:focus-within .reader-edge {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reference-reading-mode > .pane-header,
+  .reference-reading-mode > .pane-body > .toolbar,
+  .reference-reading-mode .reader-toolbar,
+  .reference-reading-mode .reader-edge {
+    transition: none;
+  }
+}

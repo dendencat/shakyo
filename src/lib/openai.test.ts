@@ -357,7 +357,7 @@ describe('reasoning_effort', () => {
     vi.unstubAllGlobals()
   })
 
-  it('デフォルトではreasoning_effort: minimalをrequest bodyに含める', async () => {
+  it('デフォルトではreasoning_effort: noneをrequest bodyに含める', async () => {
     const stream = sseStreamFromChunks([
       'data: {"choices":[{"delta":{"content":"回答"}}]}\n\n',
       'data: [DONE]\n\n',
@@ -368,7 +368,7 @@ describe('reasoning_effort', () => {
     await collect(streamExplanation({ apiKey: 'sk-test', model: 'gpt-5.4-mini', code: 'x' }))
     const init = fetchMock.mock.calls[0][1] as RequestInit
 
-    expect(JSON.parse(init.body as string).reasoning_effort).toBe('minimal')
+    expect(JSON.parse(init.body as string).reasoning_effort).toBe('none')
   })
 
   it('reasoningEffortを指定するとrequest bodyに反映される', async () => {

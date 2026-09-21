@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react'
 
-export type IconName = 'files' | 'extensions' | 'settings' | 'help' | 'sun' | 'moon' | 'system' | 'layout' | 'close' | 'back' | 'forward' | 'reload' | 'go' | 'bookmark' | 'folder' | 'history' | 'shortcuts'
+export type IconName = 'files' | 'extensions' | 'settings' | 'help' | 'sun' | 'moon' | 'system' | 'layout' | 'close' | 'back' | 'forward' | 'reload' | 'go' | 'bookmark' | 'folder' | 'history' | 'shortcuts' | 'editor' | 'reference' | 'aiExplain'
 const paths: Record<IconName, React.ReactNode> = {
   folder: <path d="M3 6h7l2 3h9v11H3zM3 6V4h7l2 2h8v3" />,
   history: <><path d="M3 4v6h6M3 10a9 9 0 1 1 1 8M12 7v5l4 2" /></>,
@@ -19,6 +19,9 @@ const paths: Record<IconName, React.ReactNode> = {
   reload: <><path d="M20 4v6h-6M20 10a8 8 0 1 0 0 6" /></>,
   go: <path d="M4 12h16m-7-7 7 7-7 7" />,
   bookmark: <path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" />,
+  editor: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" /></>,
+  reference: <><path d="M2 4.5A3.5 3.5 0 0 1 5.5 3H11v17H5.5A3.5 3.5 0 0 0 2 21.5Z" /><path d="M22 4.5A3.5 3.5 0 0 0 18.5 3H13v17h5.5a3.5 3.5 0 0 1 3.5 1.5Z" /></>,
+  aiExplain: <><path d="m15 4 5 5L8.5 20.5a2.1 2.1 0 0 1-3-3Z" /><path d="m6.5 16.5 5 5M6 3v4M4 5h4M18 15v4M16 17h4" /></>,
 }
 export function Icon({ name }: { name: IconName }) {
   return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{paths[name]}</svg>

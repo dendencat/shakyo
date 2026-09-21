@@ -43,15 +43,15 @@ export function listSnapshots(): Snapshot[] {
   }
 }
 
-export function saveSnapshot(name: string, lang: LangId, code: string): Snapshot {
+export function saveSnapshot(name: string, lang: LangId, code: string, existingId?: string): Snapshot {
   const snapshot: Snapshot = {
-    id: crypto.randomUUID(),
+    id: existingId ?? crypto.randomUUID(),
     name,
     lang,
     code,
     savedAt: Date.now(),
   }
-  const snapshots = listSnapshots().filter((s) => s.name !== name)
+  const snapshots = listSnapshots().filter((s) => s.name !== name && s.id !== existingId)
   writeSnapshots([...snapshots, snapshot])
   return snapshot
 }

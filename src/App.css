@@ -664,4 +664,14 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 .theme-menu { position: relative; }
 .theme-popover { position: absolute; left: calc(100% + 8px); bottom: 0; display: flex; gap: 6px; padding: 8px; z-index: 100; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px #0003; }
 .snackbar-region { position: fixed; top: 8px; right: 12px; z-index: 2000; pointer-events: none; max-width: calc(100vw - 72px); }
-.snackbar { padding: 10px 16px; border-radius: 6px; background: var(--text); color: var(--bg); box-shadow: 0 3px 12px #0003; font-size: 14px; }
+.snackbar { padding: 10px 16px; border-radius: 6px; color: #fff; box-shadow: 0 3px 12px #0004; font-size: 14px; animation: snackbar-life 4s ease both; }
+.snackbar-success { background: #16803c; }
+.snackbar-error { background: #c62828; }
+@keyframes snackbar-life {
+  0% { opacity: 0; transform: translateX(calc(100% + 16px)); }
+  8%, 85% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .snackbar { animation: none; }
+}

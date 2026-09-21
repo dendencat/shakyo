@@ -3,6 +3,7 @@ import * as pdfjs from 'pdfjs-dist'
 import type { PDFPageProxy } from 'pdfjs-dist'
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { fitScale, pageCssSize } from '../lib/pdfLayout'
+import { ReaderPageButtons, ReaderToolbar } from './ReaderControls'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerSrc
 
@@ -12,11 +13,13 @@ type PageEntry = {
   baseHeight: number
 }
 
-export function PdfViewer({ data }: { data: ArrayBuffer }) {
+export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; readingMode?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [pages, setPages] = useState<PageEntry[]>([])
   const [width, setWidth] = useState(0)
+  const [zoom, setZoom] = useState(100)
+  const [pageIndex, setPageIndex] = useState(0)
   // undefined: 未解決(この間はPdfPage側でIntersectionObserverを作らない)
   // null: 解決済みだがスクロールコンテナが見つからない(root: nullへフォールバック)
   const [scrollRoot, setScrollRoot] = useState<Element | null | undefined>(undefined)
@@ -48,6 +51,11 @@ export function PdfViewer({ data }: { data: ArrayBuffer }) {
       cancelled = true
       void loadingTask.destroy()
     }
+  }, [data])
+
+  useEffect(() => {
+    setZoom(100)
+    setPageIndex(0)
   }, [data])
 
   // effect#2: コンテナ幅の変化をResizeObserverで監視し、150msデバウンスしてwidthに反映する。
@@ -83,19 +91,34 @@ export function PdfViewer({ data }: { data: ArrayBuffer }) {
   }, [])
 
   return (
-    <div className="pdf-viewer" ref={containerRef}>
-      {error && <p className="error-text">{error}</p>}
-      {pages.map((p, i) => (
-        <PdfPage
-          key={i + 1}
-          page={p.page}
-          baseWidth={p.baseWidth}
-          baseHeight={p.baseHeight}
-          scale={fitScale(width, p.baseWidth)}
-          scrollRoot={scrollRoot}
-          onError={handlePageError}
+    <div className={`pdf-viewer ${readingMode ? 'reader-paginated' : 'reader-continuous'}`} ref={containerRef}>
+      <ReaderToolbar zoom={zoom} onZoomChange={setZoom}>
+        {readingMode && pages.length > 0 && <output aria-label="現在のページ">{pageIndex + 1} / {pages.length}</output>}
+      </ReaderToolbar>
+      {error && <p className="error-text" role="alert">{error}</p>}
+      <div className="pdf-pages">
+        {(readingMode ? pages.slice(pageIndex, pageIndex + 1) : pages).map((p, index) => {
+          const actualIndex = readingMode ? pageIndex : index
+          return <PdfPage
+            key={actualIndex + 1}
+            page={p.page}
+            baseWidth={p.baseWidth}
+            baseHeight={p.baseHeight}
+            scale={fitScale(width, p.baseWidth) * zoom / 100}
+            scrollRoot={scrollRoot}
+            forceVisible={readingMode}
+            onError={handlePageError}
+          />
+        })}
+      </div>
+      {readingMode && pages.length > 0 && (
+        <ReaderPageButtons
+          onPrevious={() => setPageIndex(index => Math.max(0, index - 1))}
+          onNext={() => setPageIndex(index => Math.min(pages.length - 1, index + 1))}
+          previousDisabled={pageIndex === 0}
+          nextDisabled={pageIndex === pages.length - 1}
         />
-      ))}
+      )}
     </div>
   )
 }
@@ -106,6 +129,7 @@ function PdfPage({
   baseHeight,
   scale,
   scrollRoot,
+  forceVisible,
   onError,
 }: {
   page: PDFPageProxy
@@ -113,6 +137,7 @@ function PdfPage({
   baseHeight: number
   scale: number
   scrollRoot: Element | null | undefined
+  forceVisible: boolean
   onError: (message: string) => void
 }) {
   const slotRef = useRef<HTMLDivElement>(null)
@@ -127,6 +152,7 @@ function PdfPage({
   // scrollRootがundefined(未解決)の間はobserverを作らない — 初回レンダーでroot: nullの
   // observerを作って固定化してしまうと、後でscrollRootが解決されても反映されないため。
   useEffect(() => {
+    if (forceVisible) return
     if (scrollRoot === undefined) return
     const slot = slotRef.current
     if (!slot) return
@@ -138,26 +164,34 @@ function PdfPage({
     )
     observer.observe(slot)
     return () => observer.disconnect()
-  }, [scrollRoot])
+  }, [scrollRoot, forceVisible])
 
   // effect#B: visibleのときのみcanvasを生成してラスタライズし、不可視に戻ったら破棄する。
   // これにより同時に保持するcanvasの数(=メモリ)を可視近傍分に有界化できる
   // (trade-off: スクロールで頻繁に往復すると再表示のたびに再描画コストがかかる)。
   useEffect(() => {
-    if (!visible) return
+    if (!visible && !forceVisible) return
     const slot = slotRef.current
     if (!slot) return
 
     const canvas = document.createElement('canvas')
     const viewport = page.getViewport({ scale })
-    canvas.width = viewport.width
-    canvas.height = viewport.height
+    const outputScale = Math.max(1, window.devicePixelRatio || 1)
+    canvas.width = Math.floor(viewport.width * outputScale)
+    canvas.height = Math.floor(viewport.height * outputScale)
+    canvas.style.width = `${viewport.width}px`
+    canvas.style.height = `${viewport.height}px`
     canvas.className = 'pdf-page'
     slot.replaceChildren(canvas)
 
     const context = canvas.getContext('2d')
     if (!context) return
-    const renderTask = page.render({ canvas, canvasContext: context, viewport })
+    const renderTask = page.render({
+      canvas,
+      canvasContext: context,
+      viewport,
+      transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0],
+    })
     renderTask.promise.catch((e: unknown) => {
       // RenderingCancelledExceptionはcleanupによる意図的なキャンセルなので無視する。
       // instanceofはバンドル境界(異なるpdf.jsインスタンス)で壊れうるためnameで判定する。
@@ -171,7 +205,7 @@ function PdfPage({
     }
     // page.cleanup()は呼ばない。doc.destroy()(親のloadingTask.destroy())が一括で
     // リソースを解放するため、ここで個別にcleanup()すると二重解放になりうる。
-  }, [visible, scale, page, onError])
+  }, [visible, forceVisible, scale, page, onError])
 
   return (
     <div className="pdf-page-slot" ref={slotRef} style={{ width: size.width, height: size.height }} />

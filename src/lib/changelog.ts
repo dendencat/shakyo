@@ -7,6 +7,12 @@ export interface ReleaseNote {
 // v1.3.0 cac6604, app-v1.4.0 ae104b3, v2.0.0/app-v2.0.0 3a7b0dc,
 // app-v2.1.0 5408ad3. Duplicate tags are represented by a single version.
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '2.3.0', changes: [
+    'EPUB、PDFの拡大縮小、ページ・章移動を備えたリーディングモードを追加しました。',
+    'OpenAIのモデル候補を更新し、高性能モデルの料金警告と現在のモデル・エフォート表示を追加しました。',
+    '2画面・1画面レイアウト、デスクトップ版の常に最前面、保存やファイル操作のショートカットを追加しました。',
+    'ペイン見出しをアイコン化し、通知のアニメーションと成功・エラー配色を改善しました。',
+  ] },
   { version: '2.2.0', changes: [
     '設定からペインの表示、インデント、エディタモード、文字サイズを変更できるようになりました。',
     'WebページのURL欄の横にブックマーク・履歴アイコンを配置し、URL欄の履歴候補を追加しました。',
