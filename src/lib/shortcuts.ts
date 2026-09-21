@@ -119,5 +119,10 @@ export function editorShortcutExtensions(value: Shortcuts, mode: EditorMode) {
   return Prec.highest(keymap.of(shortcutActions
     .filter(action => action.scope === 'editor')
     .filter(action => action.id === 'replace' || mode === 'normal' || mode === 'vscode' || value[action.id] !== defaults[action.id])
-    .map(action => ({ key: value[action.id], preventDefault: true, run: editorCommands[action.id]! }))))
+    .map(action => ({
+      key: value[action.id],
+      scope: action.id === 'replace' ? 'editor search-panel' : 'editor',
+      preventDefault: true,
+      run: editorCommands[action.id]!,
+    }))))
 }

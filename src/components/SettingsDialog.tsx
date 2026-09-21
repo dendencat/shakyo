@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   DEFAULT_MODEL,
   HIGH_PERFORMANCE_MODELS,
@@ -13,6 +13,23 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { isTauri } from '../lib/openExternal'
 import { KEY_PREFERENCES, loadPreferences, savePreferences, type Preferences, type EditorMode } from '../lib/preferences'
 import { PANE_LABELS } from '../lib/layout'
+import { InfoTooltip } from './InfoTooltip'
+
+function CheckSetting({ label, info, children }: { label: string; info: string; children: ReactNode }) {
+  return <div className="setting-check-row">{children}<InfoTooltip label={label}>{info}</InfoTooltip></div>
+}
+
+function FieldSetting({ id, label, info, children }: {
+  id: string
+  label: string
+  info: string
+  children: ReactNode
+}) {
+  return <div className="field">
+    <div className="setting-label-row"><label htmlFor={id}>{label}</label><InfoTooltip label={label}>{info}</InfoTooltip></div>
+    {children}
+  </div>
+}
 
 export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: { onClose: () => void; onSaved?: () => void; onError?: (message: string) => void; embedded?: boolean }) {
   const [settings, setSettings] = useState(loadSettings)
@@ -75,13 +92,17 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
       >
         <h2>設定</h2>
         <fieldset className="preferences-group"><legend>表示</legend>
-          {(['reference', 'explain'] as const).map(id => <label className="preference-check" key={id}>
-            <input type="checkbox" checked={preferences.visiblePanes[id]}
-              onChange={event => changePreferences({ visiblePanes: { ...preferences.visiblePanes, [id]: event.target.checked } })} />
-            {PANE_LABELS[id]}を表示
-          </label>)}
+          {(['reference', 'explain'] as const).map(id => <CheckSetting key={id} label={`${PANE_LABELS[id]}を表示`}
+            info={`${PANE_LABELS[id]}ペインの表示・非表示を切り替えます。閉じても保存内容は失われません。`}>
+            <label className="preference-check">
+              <input type="checkbox" checked={preferences.visiblePanes[id]}
+                onChange={event => changePreferences({ visiblePanes: { ...preferences.visiblePanes, [id]: event.target.checked } })} />
+              {PANE_LABELS[id]}を表示
+            </label>
+          </CheckSetting>)}
           <p className="hint">写経エディタは常に表示します。お手本・解説は各ペインの閉じるボタンでも非表示にできます。</p>
-          <div className="field">コードの文字サイズ
+          <div className="field">
+            <div className="setting-label-row"><span>コードの文字サイズ</span><InfoTooltip label="コードの文字サイズ">写経エディタとコード表示の文字を10〜32pxで調整します。</InfoTooltip></div>
             <div className="font-controls">
               <button type="button" aria-label="文字を縮小" disabled={preferences.fontSize <= 10} onClick={() => changePreferences({ fontSize: preferences.fontSize - 1 })}>−</button>
               <output aria-live="polite">{preferences.fontSize}px</output>
@@ -89,37 +110,45 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
               <button type="button" onClick={() => changePreferences({ fontSize: 14 })}>リセット</button>
             </div>
           </div>
-          <label className="preference-check">
-            <input type="checkbox" checked={preferences.readingMode}
-              onChange={event => changePreferences({ readingMode: event.target.checked })} />
-            リーディングモード
-          </label>
-          <label className="preference-check">
-            <input type="checkbox" checked={preferences.alwaysOnTop} disabled={!isTauri()}
-              onChange={event => changePreferences({ alwaysOnTop: event.target.checked })} />
-            常に最前面に表示{!isTauri() && '（デスクトップ版のみ）'}
-          </label>
+          <CheckSetting label="リーディングモード" info="PDF・EPUBを1ページずつ表示し、操作メニューをホバーまたはクリック時だけ表示します。">
+            <label className="preference-check">
+              <input type="checkbox" checked={preferences.readingMode}
+                onChange={event => changePreferences({ readingMode: event.target.checked })} />
+              リーディングモード
+            </label>
+          </CheckSetting>
+          <CheckSetting label="常に最前面に表示" info="デスクトップ版のshakyoウィンドウを他のウィンドウより手前に保ちます。Web版では利用できません。">
+            <label className="preference-check">
+              <input type="checkbox" checked={preferences.alwaysOnTop} disabled={!isTauri()}
+                onChange={event => changePreferences({ alwaysOnTop: event.target.checked })} />
+              常に最前面に表示{!isTauri() && '（デスクトップ版のみ）'}
+            </label>
+          </CheckSetting>
         </fieldset>
         <fieldset className="preferences-group"><legend>エディタ</legend>
-          <label className="field">エディタモード<select value={preferences.editorMode} onChange={e => changePreferences({ editorMode: e.target.value as EditorMode })}>
+          <FieldSetting id="setting-editor-mode" label="エディタモード" info="通常操作またはVim・Emacs・VSCode互換のキー操作を選びます。"><select id="setting-editor-mode" value={preferences.editorMode} onChange={e => changePreferences({ editorMode: e.target.value as EditorMode })}>
             <option value="normal">ノーマル</option><option value="vim">Vim</option><option value="emacs">Emacs</option><option value="vscode">VSCode</option>
-          </select></label>
-          <label className="field">インデント<select value={preferences.indentStyle} onChange={e => changePreferences({ indentStyle: e.target.value as Preferences['indentStyle'] })}>
+          </select></FieldSetting>
+          <FieldSetting id="setting-indent-style" label="インデント" info="Tab入力時にスペースまたはタブ文字のどちらを挿入するか選びます。"><select id="setting-indent-style" value={preferences.indentStyle} onChange={e => changePreferences({ indentStyle: e.target.value as Preferences['indentStyle'] })}>
             <option value="spaces">スペース</option><option value="tabs">タブ</option>
-          </select></label>
-          <label className="field">インデント幅<select value={preferences.indentWidth} onChange={e => changePreferences({ indentWidth: Number(e.target.value) as Preferences['indentWidth'] })}>
+          </select></FieldSetting>
+          <FieldSetting id="setting-indent-width" label="インデント幅" info="インデント1段として使用・表示する文字数を選びます。"><select id="setting-indent-width" value={preferences.indentWidth} onChange={e => changePreferences({ indentWidth: Number(e.target.value) as Preferences['indentWidth'] })}>
             {[2, 4, 8].map(width => <option key={width} value={width}>{width}</option>)}
-          </select></label>
-          <label className="preference-check"><input type="checkbox" checked={preferences.autoIndent} onChange={e => changePreferences({ autoIndent: e.target.checked })} />自動インデント</label>
+          </select></FieldSetting>
+          <CheckSetting label="自動インデント" info="改行時に言語と直前の行に合わせてインデントを自動挿入します。">
+            <label className="preference-check"><input type="checkbox" checked={preferences.autoIndent} onChange={e => changePreferences({ autoIndent: e.target.checked })} />自動インデント</label>
+          </CheckSetting>
         </fieldset>
         <fieldset className="preferences-group"><legend>Web参照</legend>
-          <label className="preference-check"><input type="checkbox" checked={preferences.showHistorySuggestions} onChange={e => changePreferences({ showHistorySuggestions: e.target.checked })} />URL欄で履歴候補を表示</label>
+          <CheckSetting label="URL欄で履歴候補を表示" info="Web参照のURL入力中に、過去に開いたURLを候補として表示します。履歴の記録自体は停止しません。">
+            <label className="preference-check"><input type="checkbox" checked={preferences.showHistorySuggestions} onChange={e => changePreferences({ showHistorySuggestions: e.target.checked })} />URL欄で履歴候補を表示</label>
+          </CheckSetting>
           <p className="hint">無効にしても履歴は記録され、履歴アイコンから確認できます。</p>
         </fieldset>
         <fieldset className="preferences-group"><legend>OpenAI</legend>
-        <label className="field">
-          OpenAI APIキー
+        <FieldSetting id="setting-api-key" label="OpenAI APIキー" info="AI解説の認証に使用します。現在はこのブラウザのlocalStorageに保存されるため、共有端末では保存しないでください。">
           <input
+            id="setting-api-key"
             type="password"
             value={settings.apiKey}
             placeholder="sk-..."
@@ -129,10 +158,10 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
             }}
             autoComplete="off"
           />
-        </label>
-        <label className="field">
-          モデル
+        </FieldSetting>
+        <FieldSetting id="setting-model" label="モデル" info="AI解説に使用するモデルを選びます。高性能モデルは詳細設定で有効化でき、料金が高くなる場合があります。">
           <select
+            id="setting-model"
             value={settings.model}
             onChange={(e) => {
               setDirty(true)
@@ -146,39 +175,41 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
           >
             {modelOptions.map(model => <option key={model} value={model}>{model}{model === DEFAULT_MODEL ? '（既定）' : ''}</option>)}
           </select>
-        </label>
+        </FieldSetting>
         <details className="field-advanced">
           <summary>詳細設定</summary>
-          <label className="preference-check">
-            <input
-              type="checkbox"
-              checked={settings.allowHighPerformanceModels}
-              onChange={(event) => {
-                setDirty(true)
-                setSettings((current) => {
-                  const allowHighPerformanceModels = event.target.checked
-                  const model = !allowHighPerformanceModels && HIGH_PERFORMANCE_MODELS.some(value => value === current.model)
-                    ? DEFAULT_MODEL
-                    : current.model
-                  return {
-                    ...current,
-                    allowHighPerformanceModels,
-                    model,
-                    reasoningEffort: normalizeReasoningEffort(current.reasoningEffort, model),
-                  }
-                })
-              }}
-            />
-            高性能なモデルを使用する
-          </label>
+          <CheckSetting label="高性能なモデルを使用する" info="GPT-5.6 SolやGPT-6 Astraを選択可能にします。性能と引き換えに高額なAPI料金が発生する可能性があります。">
+            <label className="preference-check">
+              <input
+                type="checkbox"
+                checked={settings.allowHighPerformanceModels}
+                onChange={(event) => {
+                  setDirty(true)
+                  setSettings((current) => {
+                    const allowHighPerformanceModels = event.target.checked
+                    const model = !allowHighPerformanceModels && HIGH_PERFORMANCE_MODELS.some(value => value === current.model)
+                      ? DEFAULT_MODEL
+                      : current.model
+                    return {
+                      ...current,
+                      allowHighPerformanceModels,
+                      model,
+                      reasoningEffort: normalizeReasoningEffort(current.reasoningEffort, model),
+                    }
+                  })
+                }}
+              />
+              高性能なモデルを使用する
+            </label>
+          </CheckSetting>
           {settings.allowHighPerformanceModels && (
             <p className="error-text" role="alert">
               高性能モデルは利用料金が大幅に高くなる場合があります。このアプリには請求額の上限を強制する機能がありません。
             </p>
           )}
-          <label className="field">
-            解説の深さ
+          <FieldSetting id="setting-reasoning-effort" label="解説の深さ" info="推論量を増やすほど複雑なコードを詳しく検討できますが、開始までの時間と料金が増える場合があります。">
             <select
+              id="setting-reasoning-effort"
               value={settings.reasoningEffort}
               onChange={(e) => {
                 setDirty(true)
@@ -192,7 +223,7 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
               <option value="xhigh">より深く考える（遅い）</option>
               <option value="max">最も深く考える（最も遅い）</option>
             </select>
-          </label>
+          </FieldSetting>
           <p className="hint">
             深くするほど解説が始まるまでの待ち時間が長くなります。
           </p>

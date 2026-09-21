@@ -10,5 +10,5 @@ export async function openExternal(url: string): Promise<void> {
     await openUrl(url)
     return
   }
-  window.open(url, '_blank', 'noopener')
+  window.open(url, '_blank', 'noopener,noreferrer')
 }

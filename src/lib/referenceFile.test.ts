@@ -129,14 +129,14 @@ describe('EPUB validation', () => {
     }))).rejects.toThrow('固定レイアウト')
   })
 
-  it('rejects path traversal, duplicate archive names, and external resource loads', async () => {
+  it('rejects path traversal and duplicate archive names while accepting external references for offline sanitization', async () => {
     await expect(assertSafeEpubFile(epub({ '../escape.xhtml': strToU8('<p/>') }))).rejects.toThrow('安全でない')
     await expect(assertSafeEpubFile(epub({
       'OEBPS/chapter.xhtml': strToU8('<html><body><img src="https://tracker.example/pixel"></body></html>'),
-    }))).rejects.toThrow('外部通信')
+    }))).resolves.toBeUndefined()
     await expect(assertSafeEpubFile(epub({
-      'OEBPS/chapter.xhtml': strToU8('<html><body><img src="&#x68;ttps://tracker.example/pixel"></body></html>'),
-    }))).rejects.toThrow('外部通信')
+      'OEBPS/chapter.xhtml': strToU8('<html><body><a href="&#x68;ttps://gihyo.jp/book">技術書リンク</a></body></html>'),
+    }))).resolves.toBeUndefined()
 
     const data = new Uint8Array(epub({ 'OEBPS/chapter.opf': strToU8('<package/>') }))
     // 同じ長さの中央ディレクトリ名を書き換えて、content.opfを重複させる。

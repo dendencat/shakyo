@@ -28,7 +28,11 @@ afterEach(async () => {
 const render = () => act(async () => root.render(<><SettingsDialog embedded onClose={close} /><Subscriber /></>))
 const clickText = (text: string) => act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === text)!.click())
 const clickLabel = (label: string) => act(async () => container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.click())
-const field = (label: string) => [...container.querySelectorAll('label')].find(element => element.textContent?.trim().startsWith(label))!.querySelector<HTMLInputElement | HTMLSelectElement>('input, select')!
+const field = (label: string) => {
+  const owner = [...container.querySelectorAll('label')].find(element => element.textContent?.trim().startsWith(label))!
+  return owner.querySelector<HTMLInputElement | HTMLSelectElement>('input, select')
+    ?? container.querySelector<HTMLInputElement | HTMLSelectElement>(`#${owner.htmlFor}`)!
+}
 const change = (label: string, value: string) => act(async () => {
   const element = field(label)
   const prototype = element.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype
@@ -151,4 +155,22 @@ it('shows reading mode and disables always-on-top in the web build', async () =>
   expect((field('リーディングモード') as HTMLInputElement).checked).toBe(true)
   expect((field('常に最前面に表示') as HTMLInputElement).disabled).toBe(true)
   expect(container.textContent).toContain('デスクトップ版のみ')
+})
+
+it('provides an accessible information tooltip for every setting item', async () => {
+  await render()
+  const expected = [
+    'お手本を表示', '解説を表示', 'コードの文字サイズ', 'リーディングモード', '常に最前面に表示',
+    'エディタモード', 'インデント', 'インデント幅', '自動インデント', 'URL欄で履歴候補を表示',
+    'OpenAI APIキー', 'モデル', '高性能なモデルを使用する', '解説の深さ',
+  ]
+  for (const label of expected) {
+    const button = container.querySelector<HTMLButtonElement>(`[aria-label="${label}の説明"]`)
+    expect(button, label).not.toBeNull()
+    const tooltip = document.getElementById(button!.getAttribute('aria-describedby')!)
+    expect(tooltip?.getAttribute('role')).toBe('tooltip')
+    expect(tooltip?.textContent?.length).toBeGreaterThan(0)
+  }
+  await clickLabel('リーディングモードの説明')
+  expect(container.querySelector('[aria-label="リーディングモードの説明"]')?.closest('.info-tooltip')?.hasAttribute('data-open')).toBe(true)
 })

@@ -4,6 +4,18 @@
   flex-direction: column;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .app-main {
   flex: 1;
   min-height: 0;
@@ -562,6 +574,84 @@
   color: var(--text-h);
 }
 
+.setting-label-row,
+.setting-check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setting-check-row > .preference-check {
+  flex: 1;
+  margin: 8px 0;
+}
+
+.info-tooltip {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.info-tooltip-button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-sub);
+  line-height: 0;
+}
+
+.info-tooltip-button:hover,
+.info-tooltip-button:focus-visible,
+.info-tooltip[data-open] .info-tooltip-button {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.info-tooltip-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.info-tooltip-content {
+  position: absolute;
+  z-index: 300;
+  top: calc(100% + 5px);
+  right: 0;
+  visibility: hidden;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 96px));
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  opacity: 0;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text-h);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.info-tooltip:hover .info-tooltip-content,
+.info-tooltip:focus-within .info-tooltip-content,
+.info-tooltip[data-open] .info-tooltip-content {
+  visibility: visible;
+  opacity: 1;
+  animation: info-tooltip-in 160ms ease-out;
+}
+
+@keyframes info-tooltip-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .field-advanced summary {
   cursor: pointer;
   color: var(--text-h);
@@ -674,4 +764,5 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 }
 @media (prefers-reduced-motion: reduce) {
   .snackbar { animation: none; }
+  .info-tooltip-content { animation: none !important; }
 }

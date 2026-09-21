@@ -78,4 +78,24 @@ describe('ShakyoEditor preferences', () => {
     await press('u')
     expect(view.state.doc.toString()).toBe('')
   })
+
+  it('keeps the replace panel open after Ctrl+H is released and repeated in the panel', async () => {
+    const editorRef = createRef<ReactCodeMirrorRef>()
+    await act(async () => root.render(<ShakyoEditor editorRef={editorRef} referenceText={null} referenceName={null} resolvedTheme="light" />))
+    const view = editorRef.current!.view!
+    const down = new KeyboardEvent('keydown', { key: 'h', code: 'KeyH', ctrlKey: true, bubbles: true, cancelable: true })
+    await act(async () => view.contentDOM.dispatchEvent(down))
+    await act(async () => Promise.resolve())
+    const replace = view.dom.querySelector<HTMLInputElement>('.cm-search input[name="replace"]')!
+    expect(down.defaultPrevented).toBe(true)
+    expect(replace).not.toBeNull()
+    expect(document.activeElement).toBe(replace)
+
+    const repeat = new KeyboardEvent('keydown', { key: 'h', code: 'KeyH', ctrlKey: true, repeat: true, bubbles: true, cancelable: true })
+    const up = new KeyboardEvent('keyup', { key: 'h', code: 'KeyH', ctrlKey: true, bubbles: true, cancelable: true })
+    await act(async () => replace.dispatchEvent(repeat))
+    await act(async () => replace.dispatchEvent(up))
+    expect(repeat.defaultPrevented).toBe(true)
+    expect(view.dom.querySelector('.cm-search')).not.toBeNull()
+  })
 })
