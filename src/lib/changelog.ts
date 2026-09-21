@@ -7,6 +7,12 @@ export interface ReleaseNote {
 // v1.3.0 cac6604, app-v1.4.0 ae104b3, v2.0.0/app-v2.0.0 3a7b0dc,
 // app-v2.1.0 5408ad3. Duplicate tags are represented by a single version.
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '2.3.1', changes: [
+    'PDF・EPUBの倍率直接入力とCtrl+ホイール操作、上下端からのページ送りを追加しました。',
+    'PDF・EPUBの階層目次と、円形表示の前後ページボタンを追加しました。',
+    '外部リンクを含むEPUBを通信させず安全に開き、確認後にHTTPSリンクを外部ブラウザで開けるようにしました。',
+    '全設定項目へ説明ツールチップを追加し、Ctrl/Cmd+Hの置換パネルが消える問題を修正しました。',
+  ] },
   { version: '2.3.0', changes: [
     'EPUB、PDFの拡大縮小、ページ・章移動を備えたリーディングモードを追加しました。',
     'OpenAIのモデル候補を更新し、高性能モデルの料金警告と現在のモデル・エフォート表示を追加しました。',

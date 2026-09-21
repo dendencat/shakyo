@@ -27,9 +27,26 @@
   min-width: 32px;
 }
 
-.reader-toolbar .reader-zoom-reset {
-  min-width: 58px;
+.reader-zoom-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-h);
   font-variant-numeric: tabular-nums;
+}
+
+.reader-zoom-input input {
+  box-sizing: border-box;
+  width: 58px;
+  padding: 4px 3px;
+  text-align: end;
+}
+
+.reader-toolbar .reader-zoom-reset {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 5px;
 }
 
 .reader-toolbar output {
@@ -83,12 +100,26 @@
   top: 50%;
   width: 44px;
   height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  box-shadow: var(--shadow);
+  border: 0;
+  background: transparent;
   font-size: 28px;
   transform: translateY(-50%);
+}
+
+.reader-edge-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  box-shadow: var(--shadow);
 }
 
 .reader-edge-previous {
@@ -97,6 +128,64 @@
 
 .reader-edge-next {
   right: 8px;
+}
+
+.reader-toc-toggle {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 5px;
+}
+
+.reader-toc-drawer {
+  position: absolute;
+  z-index: 8;
+  top: 45px;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  width: min(320px, 80%);
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.reader-toc-heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reader-toc-drawer nav {
+  overflow: auto;
+}
+
+.reader-toc-item {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  padding-block: 7px;
+  padding-inline-end: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-h);
+  text-align: start;
+}
+
+button.reader-toc-item:hover,
+button.reader-toc-item:focus-visible {
+  background: var(--accent-bg);
+}
+
+.reader-toc-group {
+  color: var(--text-sub);
+  font-weight: 600;
 }
 
 .reference-reading-mode {

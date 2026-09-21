@@ -208,47 +208,6 @@ function resolveArchivePath(basePath: string, relativePath: string): string {
   return result.join('/')
 }
 
-function assertNoExternalResources(files: Record<string, Uint8Array>): void {
-  const markupExtensions = /\.(?:xhtml|html?|svg|xml)$/i
-  const cssExtension = /\.css$/i
-  const decoder = new TextDecoder('utf-8')
-  const externalUrl = /^(?:(?:https?):|\/\/)/i
-  for (const [name, bytes] of Object.entries(files)) {
-    if (!markupExtensions.test(name) && !cssExtension.test(name)) continue
-    const text = decoder.decode(bytes)
-    const externalCss = /(?:@import\s+(?:url\()?\s*['"]?\s*https?:|url\(\s*['"]?\s*(?:https?:)?\/\/)/i
-    const externalResourceAttribute = /\b(?:src|srcset|poster|data|action|formaction)\s*=\s*['"]\s*(?:https?:)?\/\//i
-    const externalLinkedResource = /<(?:link|item|image|use)\b[^>]*\bhref\s*=\s*['"]\s*(?:https?:)?\/\//i
-    if (externalCss.test(text) || externalResourceAttribute.test(text) || externalLinkedResource.test(text)) {
-      throw new Error('外部通信を必要とするリソースを含むEPUBは安全のため開けません。')
-    }
-    // DOMParserは数値・名前付き文字参照を復号するため、正規表現だけでは見落とす
-    // `&#x68;ttps://...` のようなURLもiframeへ渡す前に拒否できる。
-    if (!cssExtension.test(name)) {
-      const document = new XmlDomParser({ errorHandler: () => {} }).parseFromString(text, 'application/xml')
-      const elements = document.getElementsByTagName('*')
-      for (let index = 0; index < elements.length; index++) {
-        const element = elements.item(index)
-        if (!element) continue
-        for (const attribute of ['href', 'src', 'poster', 'data', 'action', 'formaction', 'xlink:href']) {
-          const value = element.getAttribute(attribute)?.trim()
-          if (value && externalUrl.test(value)) {
-            throw new Error('外部通信を必要とするリソースを含むEPUBは安全のため開けません。')
-          }
-        }
-        const srcset = element.getAttribute('srcset')
-        if (srcset?.split(',').some(candidate => externalUrl.test(candidate.trim().split(/\s+/)[0] ?? ''))) {
-          throw new Error('外部通信を必要とするリソースを含むEPUBは安全のため開けません。')
-        }
-        const style = element.getAttribute('style')
-        if (style && externalCss.test(style)) {
-          throw new Error('外部通信を必要とするリソースを含むEPUBは安全のため開けません。')
-        }
-      }
-    }
-  }
-}
-
 function unzipArchive(data: ArrayBuffer): Promise<Record<string, Uint8Array>> {
   return new Promise((resolve, reject) => {
     unzip(new Uint8Array(data), (error, files) => {
@@ -311,5 +270,4 @@ export async function assertSafeEpubFile(data: ArrayBuffer): Promise<void> {
   if (hasFixedLayoutMetadata(packageDocument) || displayOptions.some(hasFixedLayoutMetadata)) {
     throw new Error('固定レイアウトまたは漫画形式のEPUBには対応していません。')
   }
-  assertNoExternalResources(files)
 }

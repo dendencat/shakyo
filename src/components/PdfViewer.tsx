@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist'
 import type { PDFPageProxy } from 'pdfjs-dist'
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { fitScale, pageCssSize } from '../lib/pdfLayout'
-import { ReaderPageButtons, ReaderToolbar } from './ReaderControls'
+import {
+  ReaderPageButtons,
+  ReaderTocButton,
+  ReaderTocDrawer,
+  ReaderToolbar,
+  type ReaderTocItem,
+} from './ReaderControls'
+import { readerZoomFromWheel } from '../lib/readerZoom'
+import { pageTurnFromWheel } from '../lib/readerNavigation'
+import { resolvePdfToc } from '../lib/pdfToc'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerSrc
 
@@ -15,11 +24,17 @@ type PageEntry = {
 
 export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; readingMode?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const pagesRef = useRef<HTMLDivElement>(null)
+  const pageIndexRef = useRef(0)
+  const wheelRef = useRef({ zoomAt: -Infinity, pageLocked: false, unlockTimer: undefined as ReturnType<typeof setTimeout> | undefined })
+  const tocId = `pdf-toc-${useId().replaceAll(':', '')}`
   const [error, setError] = useState<string | null>(null)
   const [pages, setPages] = useState<PageEntry[]>([])
   const [width, setWidth] = useState(0)
   const [zoom, setZoom] = useState(100)
   const [pageIndex, setPageIndex] = useState(0)
+  const [toc, setToc] = useState<ReaderTocItem[]>([])
+  const [tocOpen, setTocOpen] = useState(false)
   // undefined: 未解決(この間はPdfPage側でIntersectionObserverを作らない)
   // null: 解決済みだがスクロールコンテナが見つからない(root: nullへフォールバック)
   const [scrollRoot, setScrollRoot] = useState<Element | null | undefined>(undefined)
@@ -29,9 +44,14 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
   useEffect(() => {
     let cancelled = false
     setPages([])
+    setToc([])
+    setTocOpen(false)
     setError(null)
     // getDocument()が返すloadingTaskを保持し、クリーンアップ時にdestroy()してリソースを解放する
-    const loadingTask = pdfjs.getDocument({ data: data.slice(0) }) // pdf.jsはバッファを転送して所有するためコピーを渡す
+    const loadingTask = pdfjs.getDocument({
+      data: data.slice(0),
+      enableXfa: false,
+    }) // pdf.jsはバッファを転送して所有するためコピーを渡す
 
     const load = async () => {
       const doc = await loadingTask.promise
@@ -42,7 +62,12 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
         const base = page.getViewport({ scale: 1 })
         entries.push({ page, baseWidth: base.width, baseHeight: base.height })
       }
-      if (!cancelled) setPages(entries)
+      if (!cancelled) {
+        setPages(entries)
+        void resolvePdfToc(doc).then(items => {
+          if (!cancelled) setToc(items)
+        })
+      }
     }
     load().catch((e: unknown) => {
       if (!cancelled) setError(`PDFの表示に失敗しました: ${e instanceof Error ? e.message : String(e)}`)
@@ -56,7 +81,59 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
   useEffect(() => {
     setZoom(100)
     setPageIndex(0)
+    pageIndexRef.current = 0
   }, [data])
+
+  useEffect(() => { pageIndexRef.current = pageIndex }, [pageIndex])
+  useEffect(() => {
+    if (!readingMode) setTocOpen(false)
+  }, [readingMode])
+
+  const goToPage = useCallback((next: number) => {
+    const bounded = Math.max(0, Math.min(pages.length - 1, next))
+    pageIndexRef.current = bounded
+    setPageIndex(bounded)
+    const root = pagesRef.current
+    if (root) {
+      root.scrollTop = 0
+      root.scrollLeft = 0
+    }
+  }, [pages.length])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const wheelState = wheelRef.current
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return
+      if (event.ctrlKey) {
+        event.preventDefault()
+        const now = performance.now()
+        if (now - wheelState.zoomAt < 100) return
+        wheelState.zoomAt = now
+        setZoom(current => readerZoomFromWheel(current, event.deltaY))
+        return
+      }
+      if (!readingMode || pages.length === 0) return
+      const root = pagesRef.current
+      if (!root) return
+      const direction = pageTurnFromWheel(event.deltaY, root, pageIndexRef.current > 0, pageIndexRef.current < pages.length - 1)
+      if (direction === 0) return
+      event.preventDefault()
+      if (wheelState.unlockTimer) clearTimeout(wheelState.unlockTimer)
+      wheelState.unlockTimer = setTimeout(() => { wheelState.pageLocked = false }, 200)
+      if (wheelState.pageLocked) return
+      wheelState.pageLocked = true
+      goToPage(pageIndexRef.current + direction)
+    }
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    return () => {
+      container.removeEventListener('wheel', handleWheel)
+      if (wheelState.unlockTimer) clearTimeout(wheelState.unlockTimer)
+      wheelState.pageLocked = false
+      wheelState.unlockTimer = undefined
+    }
+  }, [goToPage, pages.length, readingMode])
 
   // effect#2: コンテナ幅の変化をResizeObserverで監視し、150msデバウンスしてwidthに反映する。
   useEffect(() => {
@@ -93,10 +170,12 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
   return (
     <div className={`pdf-viewer ${readingMode ? 'reader-paginated' : 'reader-continuous'}`} ref={containerRef}>
       <ReaderToolbar zoom={zoom} onZoomChange={setZoom}>
+        {readingMode && toc.length > 0 && <ReaderTocButton open={tocOpen} controls={tocId}
+          onToggle={() => setTocOpen(open => !open)} />}
         {readingMode && pages.length > 0 && <output aria-label="現在のページ">{pageIndex + 1} / {pages.length}</output>}
       </ReaderToolbar>
       {error && <p className="error-text" role="alert">{error}</p>}
-      <div className="pdf-pages">
+      <div className="pdf-pages" ref={pagesRef}>
         {(readingMode ? pages.slice(pageIndex, pageIndex + 1) : pages).map((p, index) => {
           const actualIndex = readingMode ? pageIndex : index
           return <PdfPage
@@ -111,10 +190,15 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
           />
         })}
       </div>
+      <ReaderTocDrawer id={tocId} open={readingMode && tocOpen} items={toc}
+        onClose={() => setTocOpen(false)} onSelect={target => {
+          goToPage(Number(target))
+          setTocOpen(false)
+        }} />
       {readingMode && pages.length > 0 && (
         <ReaderPageButtons
-          onPrevious={() => setPageIndex(index => Math.max(0, index - 1))}
-          onNext={() => setPageIndex(index => Math.min(pages.length - 1, index + 1))}
+          onPrevious={() => goToPage(pageIndexRef.current - 1)}
+          onNext={() => goToPage(pageIndexRef.current + 1)}
           previousDisabled={pageIndex === 0}
           nextDisabled={pageIndex === pages.length - 1}
         />
