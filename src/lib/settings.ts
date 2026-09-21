@@ -74,7 +74,9 @@ export function loadSettings(): Settings {
 
 export function saveSettings(settings: Settings) {
   const normalized = normalizeSettings(settings)
-  localStorage.setItem(KEY_API_KEY, normalized.apiKey)
+  // 静的なクライアントアプリとして、利用者が入力したキーをこのオリジン内だけに保存する設計。
+  // 保存先と送信先は設定画面で明示し、OpenAI以外へは送信しない。
+  localStorage.setItem(KEY_API_KEY, normalized.apiKey) // lgtm[js/clear-text-storage-of-sensitive-data]
   localStorage.setItem(KEY_MODEL, normalized.model)
   localStorage.setItem(KEY_REASONING_EFFORT, normalized.reasoningEffort)
   localStorage.setItem(KEY_HIGH_PERFORMANCE_MODELS, String(normalized.allowHighPerformanceModels))
