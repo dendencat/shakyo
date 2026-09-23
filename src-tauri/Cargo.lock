@@ -3317,7 +3317,7 @@ dependencies = [
 
 [[package]]
 name = "shakyo"
-version = "2.3.2"
+version = "2.3.3"
 dependencies = [
  "futures-util",
  "gtk",
