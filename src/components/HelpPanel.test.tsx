@@ -19,7 +19,7 @@ describe('HelpPanel', () => {
     container.innerHTML = renderToStaticMarkup(<HelpPanel />)
     const releases = Array.from(container.querySelectorAll('.help-panel > details:last-child > details'))
     expect(releases.map((release) => release.querySelector('summary')?.textContent)).toEqual([
-      'v2.3.2', 'v2.3.1', 'v2.3.0', 'v2.2.0', 'v2.1.0', 'v2.0.0', 'v1.4.0', 'v1.3.0', 'v1.2.0', 'v1.1.0', 'v1.0.0',
+      'v2.3.3', 'v2.3.2', 'v2.3.1', 'v2.3.0', 'v2.2.0', 'v2.1.0', 'v2.0.0', 'v1.4.0', 'v1.3.0', 'v1.2.0', 'v1.1.0', 'v1.0.0',
     ])
     expect(releases.filter((release) => release.hasAttribute('open')).map((release) => release.querySelector('summary')?.textContent)).toEqual([`v${version}`])
     expect(container.textContent).toContain('オフライン')
