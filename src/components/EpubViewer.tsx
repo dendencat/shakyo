@@ -10,7 +10,7 @@ import {
   ReaderToolbar,
   type ReaderTocItem,
 } from './ReaderControls'
-import { secureEpubContents, secureEpubDocument } from '../lib/epubSecurity'
+import { findInternalBookDocument, resolveInternalBookLink, secureEpubContents, secureEpubDocument, secureEpubSerializedHtml } from '../lib/epubSecurity'
 import { openExternal } from '../lib/openExternal'
 import { readerZoomFromWheel } from '../lib/readerZoom'
 import { pageTurnFromWheel } from '../lib/readerNavigation'
@@ -30,12 +30,15 @@ export function EpubViewer({ data, readingMode }: { data: ArrayBuffer; readingMo
   const zoomRef = useRef(100)
   const locationRef = useRef<Location | null>(null)
   const wheelRef = useRef({ zoomAt: -Infinity, pageLocked: false, unlockTimer: undefined as ReturnType<typeof setTimeout> | undefined })
+  const supplementRequestRef = useRef(0)
+  const navigateInternalRef = useRef<((href: string, fromHref: string) => void) | null>(null)
   const tocId = `epub-toc-${useId().replaceAll(':', '')}`
   const [error, setError] = useState<string | null>(null)
   const [zoom, setZoom] = useState(100)
   const [toc, setToc] = useState<ReaderTocItem[]>([])
   const [tocOpen, setTocOpen] = useState(false)
   const [location, setLocation] = useState<Location | null>(null)
+  const [supplement, setSupplement] = useState<{ html: string; href: string; fragment: string } | null>(null)
 
   const handleExternalLink = useCallback((url: string) => {
     const target = new URL(url)
@@ -75,6 +78,8 @@ export function EpubViewer({ data, readingMode }: { data: ArrayBuffer; readingMo
     currentCfiRef.current = undefined
     locationRef.current = null
     setTocOpen(false)
+    supplementRequestRef.current++
+    setSupplement(null)
   }, [data])
 
   useEffect(() => {
@@ -94,11 +99,15 @@ export function EpubViewer({ data, readingMode }: { data: ArrayBuffer; readingMo
       book = createEpub(data.slice(0), {
         requestMethod: (url: string) => Promise.reject(new Error(`EPUBからの外部通信を遮断しました: ${url}`)),
       })
-      await book.ready
+      // opened は epub.js の資産URL置換フック登録・置換完了まで待つ。
+      await book.opened
       if (cancelled) return
       // Section content hooks run before serialization/srcdoc insertion, so the restrictive
       // CSP and sanitization are present before an iframe can request any resource.
       book.spine.hooks.content.register((document: Document) => secureEpubDocument(document))
+      book.spine.hooks.serialize.register((_output: string, section: { output: string }) => {
+        section.output = secureEpubSerializedHtml(section.output)
+      })
       const navigation = await book.loaded.navigation
       if (!cancelled) setToc(flattenToc(navigation.toc))
       const rendition = book.renderTo(host, {
@@ -110,8 +119,40 @@ export function EpubViewer({ data, readingMode }: { data: ArrayBuffer; readingMo
         allowScriptedContent: false,
       })
       renditionRef.current = rendition
+      const navigateInternal = (href: string, fromHref: string) => {
+        const target = resolveInternalBookLink(fromHref, href)
+        if (!target || !book) return
+        const destination = target.path + target.fragment
+        if (book.spine.get(target.path)) {
+          supplementRequestRef.current++
+          setSupplement(null)
+          void rendition.display(destination)
+          return
+        }
+        const manifestHref = findInternalBookDocument(book.packaging.manifest, target.path, path => book!.resolve(path))
+        if (!manifestHref) {
+          setError('文書内リンクの参照先を表示できませんでした。')
+          return
+        }
+        const request = ++supplementRequestRef.current
+        void book.load(manifestHref).then(loaded => {
+          if (cancelled || request !== supplementRequestRef.current) return
+          const document = loaded as Document
+          if (!document.documentElement) throw new Error('文書が正しくありません。')
+          secureEpubDocument(document)
+          const html = secureEpubSerializedHtml(book!.resources.substitute(new XMLSerializer().serializeToString(document), book!.resolve(manifestHref)))
+          if (html.length > 1_000_000) throw new Error('文書が大きすぎます。')
+          setSupplement({ html, href: target.path, fragment: target.fragment })
+        }).catch(() => {
+          if (!cancelled && request === supplementRequestRef.current) setError('文書内リンクの参照先を表示できませんでした。')
+        })
+      }
+      navigateInternalRef.current = navigateInternal
       rendition.hooks.content.register((contents: Contents) => {
-        secureEpubContents(contents, handleExternalLink)
+        secureEpubContents(contents, handleExternalLink, href => {
+          const section = book?.spine.get(contents.sectionIndex)
+          if (section) navigateInternal(href, section.href)
+        })
         const document = contents.document
         const wheel = (event: WheelEvent) => handleWheel(event, document.scrollingElement ?? document.documentElement)
         document.addEventListener('wheel', wheel, { passive: false })
@@ -129,6 +170,7 @@ export function EpubViewer({ data, readingMode }: { data: ArrayBuffer; readingMo
     })
     return () => {
       cancelled = true
+      navigateInternalRef.current = null
       renditionRef.current = null
       locationRef.current = null
       if (wheelState.unlockTimer) clearTimeout(wheelState.unlockTimer)
@@ -180,6 +222,18 @@ export function EpubViewer({ data, readingMode }: { data: ArrayBuffer; readingMo
       </ReaderToolbar>
       {error && <p className="error-text" role="alert">{error}</p>}
       <div ref={hostRef} className="epub-rendition" aria-label="EPUB本文" />
+      {supplement && <div className="epub-supplement" role="dialog" aria-label="文書内の参照先">
+        <div className="epub-supplement-heading"><strong>文書内の参照先</strong>
+          <button type="button" onClick={() => { supplementRequestRef.current++; setSupplement(null) }}>本文に戻る</button></div>
+        <iframe title="文書内の参照先" sandbox="allow-same-origin" srcDoc={supplement.html} onLoad={event => {
+          const document = event.currentTarget.contentDocument
+          if (!document) return
+          secureEpubContents({ document }, handleExternalLink, href => navigateInternalRef.current?.(href, supplement.href))
+          if (supplement.fragment) {
+            try { document.getElementById(decodeURIComponent(supplement.fragment.slice(1)))?.scrollIntoView() } catch { /* 壊れた参照位置は無視する */ }
+          }
+        }} />
+      </div>}
       <ReaderTocDrawer id={tocId} open={readingMode && tocOpen} items={toc}
         onClose={() => setTocOpen(false)} onSelect={target => {
           void renditionRef.current?.display(target)

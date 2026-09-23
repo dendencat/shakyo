@@ -167,6 +167,7 @@ export function ReferencePane({
   const [fileError, setFileError] = useState<string | null>(null)
   const [sampleSelectValue, setSampleSelectValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileRequestRef = useRef(0)
   const [readingControlsVisible, setReadingControlsVisible] = useState(true)
   const readingControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialPasteRef = useRef<PasteReference | null | undefined>(undefined)
@@ -213,9 +214,11 @@ export function ReferencePane({
   }, [tab, content, pasteEditing, pasteRef, onReferenceChange])
 
   const openFile = async (file: File) => {
+    const request = ++fileRequestRef.current
     setFileError(null)
     try {
       const loaded = await readReferenceFile(file)
+      if (request !== fileRequestRef.current) return
       if (loaded.kind === 'text') {
         setContent({
           kind: 'text',
@@ -225,8 +228,15 @@ export function ReferencePane({
         })
       } else setContent({ ...loaded, name: file.name })
     } catch (e) {
+      if (request !== fileRequestRef.current) return
       setFileError(`ファイルの読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`)
     }
+  }
+
+  const closeFile = () => {
+    fileRequestRef.current++
+    setContent(null)
+    setFileError(null)
   }
 
   const loadWeb = (inputUrl = webUrl) => {
@@ -358,7 +368,8 @@ export function ReferencePane({
                 </option>
               ))}
             </select>
-            {content && <span className="file-name" title={content.name}>{content.name}</span>}
+            {content && <><span className="file-name" title={content.name}>{content.name}</span>
+              <IconButton icon="close" label="ファイルを閉じる" onClick={closeFile} /></>}
           </div>
     </div>
   )
@@ -410,7 +421,8 @@ export function ReferencePane({
           {!sidebarTarget && fileControls}
           {sidebarTarget && <div className="toolbar">
             <button className="primary" onClick={openFilePicker}>参照…</button>
-            {content && <span className="file-name" title={content.name}>{content.name}</span>}
+            {content && <><span className="file-name" title={content.name}>{content.name}</span>
+              <IconButton icon="close" label="ファイルを閉じる" onClick={closeFile} /></>}
           </div>}
           {fileError && <p className="error-text" role="alert">{fileError}</p>}
           <div className="reference-content">

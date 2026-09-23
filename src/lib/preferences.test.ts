@@ -35,7 +35,12 @@ it.each([9, 14.5, '24', null])('rejects invalid font size %s', fontSize => {
 })
 
 it.each(['normal', 'vim', 'emacs', 'vscode'] as const)('round trips supported mode %s and valid preferences', editorMode => {
-  const saved = { ...defaultPreferences(), editorMode, indentStyle: 'tabs' as const, indentWidth: 8 as const, autoIndent: false, showHistorySuggestions: false, readingMode: true, alwaysOnTop: true, fontSize: 32 }
+  const saved = { ...defaultPreferences(), editorMode, indentStyle: 'tabs' as const, indentWidth: 8 as const, autoIndent: false, showHistorySuggestions: false, readingMode: true, fontSize: 32 }
   savePreferences(saved)
   expect(loadPreferences()).toEqual(saved)
+})
+
+it('ignores the retired always-on-top preference', () => {
+  localStorage.setItem(KEY_PREFERENCES, JSON.stringify({ alwaysOnTop: true }))
+  expect(loadPreferences()).toEqual(defaultPreferences())
 })

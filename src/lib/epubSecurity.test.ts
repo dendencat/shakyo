@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { normalizeExternalBookLink, secureEpubContents, secureEpubDocument } from './epubSecurity'
+import { findInternalBookDocument, normalizeExternalBookLink, resolveInternalBookLink, secureEpubContents, secureEpubDocument, secureEpubSerializedHtml } from './epubSecurity'
 
 describe('secureEpubContents', () => {
   it('adds a restrictive CSP and removes active content and event handlers', () => {
@@ -58,6 +58,45 @@ describe('secureEpubContents', () => {
     expect(document.querySelector('p')?.hasAttribute('style')).toBe(false)
   })
 
+  it('keeps embedded images, code formatting, and generated book styles', () => {
+    const document = new DOMParser().parseFromString(
+      '<html><head><link rel="stylesheet" href="blob:https://book.test/style"></head>'
+      + '<body><h1>章</h1><pre><code>const answer = 42</code></pre>'
+      + '<img src="blob:https://book.test/image" alt="図"></body></html>', 'text/html',
+    )
+    secureEpubContents({ document })
+    expect(document.querySelector('link[rel="stylesheet"]')?.getAttribute('href')).toBe('blob:https://book.test/style')
+    expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:https://book.test/image')
+    expect(document.querySelector('h1')?.textContent).toBe('章')
+    expect(document.querySelector('pre code')?.textContent).toContain('answer')
+  })
+
+  it('hands relative and fragment links to the reader before browser navigation', () => {
+    const document = new DOMParser().parseFromString(
+      '<html><head></head><body><a href="chapter2.xhtml#example">次章</a><a href="#code">コード</a></body></html>', 'text/html',
+    )
+    const onInternalLink = vi.fn()
+    secureEpubContents({ document }, undefined, onInternalLink)
+    for (const anchor of document.querySelectorAll('a')) {
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+      anchor.dispatchEvent(click)
+      expect(click.defaultPrevented).toBe(true)
+    }
+    expect(onInternalLink.mock.calls.map(call => call[0])).toEqual(['chapter2.xhtml#example', '#code'])
+  })
+
+  it('resolves a non-spine footnote only through an internal XHTML manifest entry', () => {
+    const target = resolveInternalBookLink('OEBPS/Text/chapter.xhtml', 'notes.xhtml#note-1')
+    expect(target).toEqual({ path: 'OEBPS/Text/notes.xhtml', fragment: '#note-1' })
+    const manifest = {
+      notes: { href: 'Text/notes.xhtml', type: 'application/xhtml+xml' },
+      image: { href: 'Text/notes.xhtml', type: 'image/png' },
+    }
+    expect(findInternalBookDocument(manifest, target!.path, href => `/OEBPS/${href}`)).toBe('Text/notes.xhtml')
+    expect(resolveInternalBookLink('OEBPS/Text/chapter.xhtml', 'https://outside.test/notes.xhtml')).toBeNull()
+    expect(findInternalBookDocument(manifest, 'OEBPS/Text/missing.xhtml', href => `/OEBPS/${href}`)).toBeNull()
+  })
+
   it('inserts the CSP element in the XHTML namespace', () => {
     const document = new DOMParser().parseFromString(
       '<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body><p>本文</p></body></html>',
@@ -76,6 +115,23 @@ describe('secureEpubContents', () => {
     const policies = document.querySelectorAll('meta[http-equiv="Content-Security-Policy"]')
     expect(policies).toHaveLength(1)
     expect(policies[0].getAttribute('content')).toContain("default-src 'none'")
+  })
+
+  it('restores CSP after epub.js asset substitutions rewrite directive names', () => {
+    const source = new DOMParser().parseFromString(
+      '<html><head></head><body><img src="default-src"><link rel="stylesheet" href="style-src"></body></html>',
+      'text/html',
+    )
+    secureEpubDocument(source)
+    const serialized = new XMLSerializer().serializeToString(source)
+    const substituted = serialized.replaceAll('default-src', 'data:').replaceAll('style-src', 'blob:')
+    const finalHtml = secureEpubSerializedHtml(substituted)
+    const finalDocument = new DOMParser().parseFromString(finalHtml, 'text/html')
+    const policy = finalDocument.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content')
+    expect(policy).toContain("default-src 'none'")
+    expect(policy).toContain("style-src 'unsafe-inline' blob: data:")
+    expect(finalDocument.querySelectorAll('meta[http-equiv="Content-Security-Policy"]')).toHaveLength(1)
+    expect(finalHtml.indexOf('Content-Security-Policy')).toBeLessThan(finalHtml.indexOf('<body'))
   })
 
   it('removes backslash-prefixed links before browser URL canonicalization', () => {

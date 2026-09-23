@@ -29,6 +29,7 @@ it('fills newly introduced application shortcuts into legacy storage', () => {
   const loaded = loadShortcuts()
   expect(loaded.undo).toBe('Alt-z')
   expect(loaded.clear).toBe('Alt-Shift-d')
+  expect(loaded.newPage).toBe('Mod-n')
   expect(loaded.save).toBe('Mod-s')
   expect(loaded.saveAs).toBe('Mod-Shift-s')
   expect(loaded.openReference).toBe('Mod-o')

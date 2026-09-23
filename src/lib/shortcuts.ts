@@ -32,6 +32,7 @@ export const shortcutActions = [
   { id: 'copyUp', label: '行を上へ複製', key: 'Alt-Shift-ArrowUp', scope: 'editor' },
   { id: 'copyDown', label: '行を下へ複製', key: 'Alt-Shift-ArrowDown', scope: 'editor' },
   { id: 'clear', label: 'テキストをすべて削除', key: 'Alt-Shift-d', scope: 'app' },
+  { id: 'newPage', label: '新規ページ', key: 'Mod-n', scope: 'app' },
   { id: 'save', label: '上書き保存', key: 'Mod-s', scope: 'app' },
   { id: 'saveAs', label: '名前を付けて保存', key: 'Mod-Shift-s', scope: 'app' },
   { id: 'openReference', label: 'ファイルを開く', key: 'Mod-o', scope: 'app' },

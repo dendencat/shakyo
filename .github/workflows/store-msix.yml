@@ -1,0 +1,124 @@
+name: Store MSIX
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Protected vX.Y.Z release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-msix-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.verify.outputs.sha }}
+      tag: ${{ steps.verify.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate protected tag, main ancestry and versions
+        id: verify
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Invalid release tag'; exit 1; }
+          git fetch --no-tags origin main "refs/tags/$TAG:refs/tags/$TAG"
+          sha=$(git rev-parse "refs/tags/$TAG^{commit}")
+          git merge-base --is-ancestor "$sha" origin/main || { echo '::error::Tag commit is not on main'; exit 1; }
+          git checkout --detach "$sha"
+          node scripts/check-release-version.mjs "$TAG"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - name: Require successful main push CI for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ steps.verify.outputs.sha }}
+        run: |
+          set -euo pipefail
+          response=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f branch=main -f event=push -f head_sha="$EXPECTED_SHA" -f per_page=100)
+          state=$(jq -r --arg sha "$EXPECTED_SHA" '
+            [.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")]
+            | sort_by(.created_at, .run_attempt) | last
+            | if . == null then "missing"
+              elif .status == "completed" and .conclusion == "success" then "success"
+              else "failed" end
+          ' <<< "$response")
+          [[ "$state" == success ]] || { echo "::error::Main push CI was not successful for $EXPECTED_SHA ($state)"; exit 1; }
+
+  build:
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: Swatinem/rust-cache@401aff9a7a08acb9d27b64936a90db81024cff97 # v2.8.2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Build x64 Tauri executable without installer
+        run: npm run tauri -- build --target x86_64-pc-windows-msvc --no-bundle
+      - name: Package and inspect unsigned Windows 11 MSIX
+        shell: pwsh
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = 'src-tauri/target/x86_64-pc-windows-msvc/release/shakyo.exe'
+          if (!(Test-Path $exe)) { throw 'Tauri x64 executable is missing' }
+          $stage = Join-Path $env:RUNNER_TEMP 'store-msix-stage'
+          $unpacked = Join-Path $env:RUNNER_TEMP 'store-msix-unpacked'
+          New-Item -ItemType Directory -Path store-msix-assets | Out-Null
+          $version = $env:TAG.Substring(1)
+          $package = Join-Path 'store-msix-assets' "dendencat.shakyo_${version}_x64.msix"
+          node scripts/store-msix.mjs prepare $env:TAG $exe $stage
+          if ($LASTEXITCODE -ne 0) { throw 'MSIX staging failed' }
+          $tool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter makeappx.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\makeappx\.exe$' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (!$tool) { throw 'Windows SDK MakeAppx is unavailable' }
+          & $tool.FullName pack /v /h SHA256 /d $stage /p $package
+          if ($LASTEXITCODE -ne 0) { throw 'MakeAppx pack failed' }
+          & $tool.FullName unpack /p $package /d $unpacked
+          if ($LASTEXITCODE -ne 0) { throw 'MakeAppx unpack failed' }
+          node scripts/store-msix.mjs verify $env:TAG $exe $unpacked
+          if ($LASTEXITCODE -ne 0) { throw 'Unpacked MSIX verification failed' }
+          $hash = (Get-FileHash -Algorithm SHA256 $package).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $package -Leaf)" | Set-Content -Encoding utf8 store-msix-assets/SHA256SUMS.txt
+      - uses: actions/attest@c32b4b8b198b65d0bd9d63490e847ff7b53989d4 # v4.0.0
+        with:
+          subject-path: store-msix-assets/*.msix
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: store-msix-${{ needs.prepare.outputs.tag }}
+          path: store-msix-assets/*
+          if-no-files-found: error
+          retention-days: 14

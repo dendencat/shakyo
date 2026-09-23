@@ -1,53 +1,188 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'リリースするバージョンタグ (例: v1.1.0)'
-        required: true
-        type: string
+  push:
+    tags: ['v*.*.*']
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ inputs.version }}
+  prepare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.verify.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - name: バージョン形式の検証
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag, commit and versions
+        id: verify
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            printf '::error::version は v1.2.3 形式で指定してください: %s\n' "$VERSION"
-            exit 1
-          fi
-      - name: 既存タグ・リリースの確認
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Invalid release tag'; exit 1; }
+          git fetch --no-tags origin main
+          [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || { echo '::error::Tag must point to the current main commit'; exit 1; }
+          node scripts/check-release-version.mjs "$TAG"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require successful main push CI for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ steps.verify.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 48); do
+            response=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f branch=main -f event=push -f head_sha="$EXPECTED_SHA" -f per_page=100)
+            state=$(jq -r --arg sha "$EXPECTED_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")]
+              | sort_by(.created_at, .run_attempt) | last
+              | if . == null then "pending"
+                elif .status == "completed" and .conclusion == "success" then "success"
+                elif .status == "completed" then "failed"
+                else "pending" end
+            ' <<< "$response")
+            case "$state" in
+              success) echo "CI passed for $EXPECTED_SHA"; exit 0 ;;
+              failed) echo "::error::Main push CI did not pass for $EXPECTED_SHA"; exit 1 ;;
+              pending) ;;
+              *) echo "::error::Unexpected CI state: $state"; exit 1 ;;
+            esac
+            if (( attempt < 48 )); then sleep 10; fi
+          done
+          echo "::error::Main push CI was not successful within eight minutes for $EXPECTED_SHA"
+          exit 1
+  web:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Archive static Web distribution
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir release-assets
+          tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - dist | gzip -n > "release-assets/web-shakyo-$TAG.tar.gz"
+      - uses: actions/attest@c32b4b8b198b65d0bd9d63490e847ff7b53989d4 # v4.0.0
+        with:
+          subject-path: release-assets/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-web
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: Swatinem/rust-cache@401aff9a7a08acb9d27b64936a90db81024cff97 # v2.8.2
+        with:
+          workspaces: src-tauri
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev xdg-utils
+      - run: npm ci
+      - name: Build Linux installers
+        run: npm run tauri -- build
+      - name: Collect release assets
+        env:
+          RELEASE_PLATFORM: linux
+        run: node scripts/collect-release-assets.mjs
+      - uses: actions/attest@c32b4b8b198b65d0bd9d63490e847ff7b53989d4 # v4.0.0
+        with:
+          subject-path: release-assets/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-linux
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: [prepare, web, build]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      attestations: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify assets, attestations and checksums
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 誤って既存リリースを上書きしないよう、同名があれば失敗させる
-          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            printf '::error::リリース %s は既に存在します\n' "$VERSION"
-            exit 1
-          fi
-      - name: リリース作成
+          set -euo pipefail
+          for platform in web linux; do
+            compgen -G "release-assets/${platform}-*" >/dev/null || { echo "::error::Missing $platform assets"; exit 1; }
+          done
+          cd release-assets
+          for file in *; do gh attestation verify "$file" --repo "$GITHUB_REPOSITORY"; done
+          sha256sum * > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+      - name: Publish one complete release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
-          NOTES_FILE=".github/release-notes/$VERSION.md"
-          if [[ -f "$NOTES_FILE" ]]; then
-            gh release create "$VERSION" \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --title "$VERSION" \
-              --notes-file "$NOTES_FILE"
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then echo '::error::Release already exists'; exit 1; fi
+          notes=".github/release-notes/$TAG.md"
+          if [[ -f "$notes" ]]; then
+            gh release create "$TAG" --verify-tag --target "$COMMIT_SHA" --title "$TAG" --draft --notes-file "$notes"
           else
-            gh release create "$VERSION" \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --title "$VERSION" \
-              --generate-notes
+            gh release create "$TAG" --verify-tag --target "$COMMIT_SHA" --title "$TAG" --draft --generate-notes
           fi
+          gh release upload "$TAG" release-assets/*
+          gh release edit "$TAG" --draft=false

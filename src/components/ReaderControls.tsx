@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { IconButton } from './Icon'
 import { MAX_READER_ZOOM, MIN_READER_ZOOM, READER_ZOOM_STEP, clampReaderZoom } from '../lib/readerZoom'
 
@@ -91,6 +91,14 @@ export function ReaderTocDrawer({ id, open, items, onSelect, onClose }: {
   onSelect: (target: string) => void
   onClose: () => void
 }) {
+  const drawerRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const drawer = drawerRef.current
+    if (!open || !drawer) return
+    const stopWheel = (event: WheelEvent) => event.stopPropagation()
+    drawer.addEventListener('wheel', stopWheel)
+    return () => drawer.removeEventListener('wheel', stopWheel)
+  }, [open])
   useEffect(() => {
     if (!open) return
     const close = (event: globalThis.KeyboardEvent) => {
@@ -102,7 +110,7 @@ export function ReaderTocDrawer({ id, open, items, onSelect, onClose }: {
 
   if (!open) return null
   return (
-    <aside id={id} className="reader-toc-drawer" aria-label="目次">
+    <aside id={id} ref={drawerRef} className="reader-toc-drawer" aria-label="目次">
       <div className="reader-toc-heading">
         <strong>目次</strong>
         <IconButton icon="close" label="目次を閉じる" onClick={onClose} />

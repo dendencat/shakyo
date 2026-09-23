@@ -44,7 +44,7 @@ const subscription = () => JSON.parse(container.querySelector('[data-subscriber]
 const storage = (key: string | null) => act(async () => window.dispatchEvent(new StorageEvent('storage', { key })))
 
 it('cancels edited preferences and OpenAI fields without saving them', async () => {
-  saveSettings({ apiKey: '', model: 'existing-model', reasoningEffort: 'low', allowHighPerformanceModels: false })
+  await saveSettings({ apiKey: '', model: 'existing-model', reasoningEffort: 'low', allowHighPerformanceModels: false })
   const existing = loadSettings()
   await render()
   await change('エディタモード', 'vim')
@@ -149,18 +149,17 @@ it('migrates an old saved model to Luna without injecting it into the dropdown',
   expect([...field('モデル').querySelectorAll('option')].map(option => option.value)).not.toContain('gpt-5.4')
 })
 
-it('shows reading mode and disables always-on-top in the web build', async () => {
+it('shows reading mode without the unsupported always-on-top setting', async () => {
   await render()
   await toggle('リーディングモード')
   expect((field('リーディングモード') as HTMLInputElement).checked).toBe(true)
-  expect((field('常に最前面に表示') as HTMLInputElement).disabled).toBe(true)
-  expect(container.textContent).toContain('デスクトップ版のみ')
+  expect(container.textContent).not.toContain('常に最前面に表示')
 })
 
 it('provides an accessible information tooltip for every setting item', async () => {
   await render()
   const expected = [
-    'お手本を表示', '解説を表示', 'コードの文字サイズ', 'リーディングモード', '常に最前面に表示',
+    'お手本を表示', '解説を表示', 'コードの文字サイズ', 'リーディングモード',
     'エディタモード', 'インデント', 'インデント幅', '自動インデント', 'URL欄で履歴候補を表示',
     'OpenAI APIキー', 'モデル', '高性能なモデルを使用する', '解説の深さ',
   ]

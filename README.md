@@ -99,9 +99,13 @@ npm run tauri build
 
 生成されたインストーラは `src-tauri/target/release/bundle/` 以下に出力されます。
 
-**リリース**: `app-v*` 形式のタグ(例 `app-v1.2.0`)をpushすると、GitHub Actionsのワークフロー(`.github/workflows/desktop.yml`)がWindows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)のインストーラをビルドし、draft releaseに添付します。内容を確認してから公開してください。バージョンを上げる際は、アプリ表示バージョン(`tauri.conf.json` が参照)のもとになる `package.json` と、`src-tauri/Cargo.toml` の両方の `version` を更新してください。
+**GitHub Release**: mainのpush CIが成功したコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)とLinux(.deb/.AppImage)をビルドします。タグ・main・成功済みCIのコミットと各バージョンが一致し、Artifact AttestationとSHA-256検証が通った場合だけ公開します。CIが失敗または時間切れの場合は公開しません。今回のmacOS版は保留します。
 
-**注記**: 配布バイナリはコード署名を行っていません。そのため、macOSでは Gatekeeper の警告が表示されます(右クリック→「開く」を選ぶか、`xattr -dr com.apple.quarantine` で解除してください)。Windowsでは SmartScreen の警告が表示されます。
+**Windows Store**: Windows 11 x64版はMSI/EXEを直接配布せず、予約済みの`shakyo`製品へMSIXを手動提出します。[Store MSIX workflow](.github/workflows/store-msix.yml)をタグ指定で起動し、Actions artifactから提出用の未署名MSIXを取得します。Partner Centerの製品IDは`dendencat.shakyo`、Publisherは`CN=A56B1A7A-89BE-477F-BC7A-5CDF09C69BC8`、PublisherDisplayNameは`dendencat`です。Windows 11実機で起動・WebView2・APIキー保存を確認し、Windows App Certification Kitで検証してからPartner Centerへアップロードします。Store提出用MSIXはMicrosoftが審査後に署名するため、Windowsのコード署名証明書は取得しません。自己署名を使う場合は私的な実機試験に限り、秘密鍵をリポジトリや公開物に含めません。Store審査が終わるまでMSIXをGitHub Releaseから直接配布しません。
+
+PRではlint、Vitest、build、`cargo check --locked`、ChromiumのPlaywrightスモークテストと依存関係レビューを実行します。Playwright失敗時はスクリーンショット・trace・レポートをActions artifactに保存します。公開物のハッシュはReleaseの`SHA256SUMS.txt`で確認でき、`gh attestation verify <file> --repo dendencat/shakyo`で出所を検証できます。
+
+2026-09-23にmainのRuleset（ID `19080468`）へCI `web`・`rust`・`browser`・`dependency-review`の必須チェックとレビュー会話の解決条件を適用しました。変更案は`gh api repos/dendencat/shakyo/rulesets/19080468 | node scripts/prepare-main-ruleset.mjs`で再生成できます。リリースタグは、管理者だけが作成できるRuleset（ID `23853970`）と、作成後の更新・削除を禁止するRuleset（ID `23854004`）を適用済みです。設定の正典は[release-tag-creation.json](.github/rulesets/release-tag-creation.json)と[release-tags.json](.github/rulesets/release-tags.json)です。
 
 実装計画は [PLAN.md](PLAN.md)、開発規約とAIエージェント運用は [AGENTS.md](AGENTS.md) を参照してください。
 
@@ -118,7 +122,7 @@ npm run tauri build
 
 歯車の設定画面は「表示」「エディタ」「Web参照」「OpenAI」に分かれています。「保存」で反映し、「キャンセル」で変更を破棄します。
 
-- **表示**: お手本・解説を設定または各ペインの閉じるボタンで非表示にできます。写経エディタは常に表示します。設定から再表示すると内容や編集履歴を引き継ぎます。リーディングモードではPDF/EPUBの操作UIをホバー・クリック時だけ表示します。デスクトップ版では「常に最前面」も選択できます。コード文字サイズは縮小・拡大・リセットで10〜32pxに変更でき、初期値は14pxです。
+- **表示**: お手本・解説を設定または各ペインの閉じるボタンで非表示にできます。写経エディタは常に表示します。設定から再表示すると内容や編集履歴を引き継ぎます。リーディングモードではPDF/EPUBの操作UIをホバー・クリック時だけ表示します。コード文字サイズは縮小・拡大・リセットで10〜32pxに変更でき、初期値は14pxです。
 - **エディタ**: スペース／タブ、幅2・4・8、自動インデントを選べます。初期値はスペース2・自動インデント有効で、変更後の入力に適用されます。入力済みコードの自動変換は行いません。操作モードはノーマル（初期値）・Vim・Emacs・VSCodeから選べます。主要なキー操作は左の「ショートカット」で確認できます。
 - **Web参照**: URL欄の横のフォルダアイコンはブックマーク、反時計回りの矢印アイコンは履歴を開きます。URL欄を選ぶと過去の履歴候補が開き、入力で絞り込み、矢印キー・Enterで選択、Escapeで閉じられます。設定で候補を無効にしても履歴の記録・一覧は利用できます。
 - **ヘルプ**: 各項目を見出しから開閉できます。「更新履歴」を開くと、v1.0.0からのバージョンを個別に選べます。

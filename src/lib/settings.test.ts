@@ -6,6 +6,8 @@ import {
   KEY_DRAFT,
   KEY_EDITOR_LANG,
   loadSettings,
+  initializeApiKey,
+  resetApiKeyStateForTest,
   normalizeReasoningEffort,
   normalizeSettings,
   saveSettings,
@@ -14,6 +16,7 @@ import {
 describe('settings', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetApiKeyStateForTest()
   })
 
   describe('loadSettings', () => {
@@ -26,10 +29,12 @@ describe('settings', () => {
       })
     })
 
-    it('保存済みのAPIキーとeffortを読み込み、旧モデルは既定へ移行する', () => {
+    it('旧APIキーをメモリへ移し、localStorageから削除する', async () => {
       localStorage.setItem('shakyo.openai.apiKey', 'sk-test123')
       localStorage.setItem('shakyo.openai.model', 'gpt-5.4')
       localStorage.setItem('shakyo.openai.reasoningEffort', 'high')
+      await initializeApiKey()
+      expect(localStorage.getItem('shakyo.openai.apiKey')).toBeNull()
       expect(loadSettings()).toEqual({
         apiKey: 'sk-test123',
         model: DEFAULT_MODEL,
@@ -55,13 +60,21 @@ describe('settings', () => {
   })
 
   describe('saveSettings', () => {
-    it('設定値を保存し、再読込で同じ値が返る', () => {
-      saveSettings({ apiKey: 'sk-abc', model: 'gpt-5.6-terra', reasoningEffort: 'low', allowHighPerformanceModels: false })
+    it('Web版の再読み込み後はキーを復元しない', async () => {
+      await saveSettings({ apiKey: 'sk-session', model: DEFAULT_MODEL, reasoningEffort: 'none', allowHighPerformanceModels: false })
+      expect(loadSettings().apiKey).toBe('sk-session')
+      resetApiKeyStateForTest() // 新しいページのメモリ状態
+      expect(loadSettings().apiKey).toBe('')
+      expect(localStorage.getItem('shakyo.openai.apiKey')).toBeNull()
+    })
+    it('設定値を保存し、再読込で同じ値が返る', async () => {
+      await saveSettings({ apiKey: 'sk-abc', model: 'gpt-5.6-terra', reasoningEffort: 'low', allowHighPerformanceModels: false })
+      expect(localStorage.getItem('shakyo.openai.apiKey')).toBeNull()
       expect(loadSettings()).toEqual({ apiKey: 'sk-abc', model: 'gpt-5.6-terra', reasoningEffort: 'low', allowHighPerformanceModels: false })
     })
 
-    it('modelが空文字の場合はデフォルトモデルを保存する', () => {
-      saveSettings({ apiKey: 'sk-abc', model: '', reasoningEffort: DEFAULT_REASONING_EFFORT, allowHighPerformanceModels: false })
+    it('modelが空文字の場合はデフォルトモデルを保存する', async () => {
+      await saveSettings({ apiKey: 'sk-abc', model: '', reasoningEffort: DEFAULT_REASONING_EFFORT, allowHighPerformanceModels: false })
       expect(loadSettings()).toEqual({
         apiKey: 'sk-abc',
         model: DEFAULT_MODEL,
@@ -70,8 +83,8 @@ describe('settings', () => {
       })
     })
 
-    it('apiKeyが空文字でも保存できる', () => {
-      saveSettings({ apiKey: '', model: 'gpt-5.6-terra', reasoningEffort: DEFAULT_REASONING_EFFORT, allowHighPerformanceModels: false })
+    it('apiKeyが空文字でも保存できる', async () => {
+      await saveSettings({ apiKey: '', model: 'gpt-5.6-terra', reasoningEffort: DEFAULT_REASONING_EFFORT, allowHighPerformanceModels: false })
       expect(loadSettings()).toEqual({
         apiKey: '',
         model: 'gpt-5.6-terra',
@@ -80,8 +93,8 @@ describe('settings', () => {
       })
     })
 
-    it('高性能モデルの許可とAstra向けの実効エフォートを保存する', () => {
-      saveSettings({ apiKey: '', model: 'gpt-6-astra', reasoningEffort: 'none', allowHighPerformanceModels: true })
+    it('高性能モデルの許可とAstra向けの実効エフォートを保存する', async () => {
+      await saveSettings({ apiKey: '', model: 'gpt-6-astra', reasoningEffort: 'none', allowHighPerformanceModels: true })
       expect(loadSettings()).toEqual({
         apiKey: '',
         model: 'gpt-6-astra',
