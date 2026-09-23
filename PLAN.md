@@ -109,7 +109,7 @@ CodeMirror 6。言語選択(または拡張子から自動判定)でハイライ
 - お手本閲覧: PDFとEPUBのページ送りはボタン全体で操作でき、目次のスクロールは本文へ伝播しない。PDFの文書内リンクとEPUBの章・脚注リンクで移動できる。EPUB内の画像・コード・スタイルを表示し、外部通信と埋め込みスクリプトは許可しない。ファイルを続けて開く、読み込み中に閉じる、現在の参照ファイルだけを閉じる操作で古い読み込み結果が復活しない。
 - 編集と設定: Ctrl/Cmd+Nで新しい空ページを作り、未保存内容があれば確認する。置換パネルは時間経過だけで閉じない。ファイル保存の操作後に緑のチェックと「Saved!」を示す。設定の説明ツールチップを画面内に収める。動作を保証できない「常に最前面」設定は削除する。
 - APIキー: ブラウザ版では実行中のメモリ、デスクトップ版ではOSの資格情報ストアを使う。旧localStorageのキーは移行し、秘密情報をログ・URL・コミットへ含めない。デスクトップ版のOpenAI通信は信頼するメイン画面からのTauriコマンドに限定する。
-- CIと配布: Web・Rust・ブラウザ操作・依存関係の検証をPRで実行し、mainの保護とリリースタグ保護を設定する。mainのCIが成功した`v2.3.2`タグからWebアーカイブとLinuxの`.deb`・`.AppImage`を作り、チェックサムと来歴を検証してGitHub Releaseで公開する。macOSの配布は今回保留する。
+- CIと配布: Web・Rust・ブラウザ操作・依存関係の検証をPRで実行し、mainの保護とリリースタグ保護を設定する。`v2.3.2`タグでLinux成果物の収集が失敗したため、修正版の`v2.3.3`タグからWebアーカイブとLinuxの`.deb`・`.AppImage`を作り、チェックサムと来歴を検証してGitHub Releaseで公開する。macOSの配布は今回保留する。
 - Windows Store: 予約済みの`shakyo`製品に対応するWindows 11 x64用の未署名MSIXを、保護タグから手動起動のActions workflowで作成する。製品IDは`dendencat.shakyo`、Publisherは`CN=A56B1A7A-89BE-477F-BC7A-5CDF09C69BC8`、PublisherDisplayNameは`dendencat`とする。MSIXはGitHub Releaseへ添付せず、Windows 11実機確認とWindows App Certification Kitを経てPartner Centerへ手動提出する。Store審査後の署名はMicrosoftに任せる。正式な証明書は取得せず、自己署名は必要な実機試験にのみ使う。
 - 検証: 単体テスト、型チェック、lint、ブラウザ操作、Rustの検査、Windows runnerでのMSIX構造検査、独立レビューを通す。Windows 11実機操作とOS資格情報ストアの実環境確認、Store審査は実施結果を明記する。
 - 対象外: 正誤判定・統計・学習進捗保存、追加バックエンド、今回のmacOS公開、WindowsのMSI/EXE直接配布、自己署名パッケージの一般公開。

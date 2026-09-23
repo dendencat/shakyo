@@ -1,8 +1,8 @@
-import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { basename, join, sep } from 'node:path'
 
 const platform = process.env.RELEASE_PLATFORM
-const version = JSON.parse(await import('../package.json', { with: { type: 'json' } })).version
+const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 const suffixes = {
   linux: ['.deb', '.AppImage'],
 }[platform]
