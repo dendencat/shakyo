@@ -99,9 +99,22 @@ npm run tauri build
 
 生成されたインストーラは `src-tauri/target/release/bundle/` 以下に出力されます。
 
-**リリース**: `app-v*` 形式のタグ(例 `app-v1.2.0`)をpushすると、GitHub Actionsのワークフロー(`.github/workflows/desktop.yml`)がWindows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)のインストーラをビルドし、draft releaseに添付します。内容を確認してから公開してください。バージョンを上げる際は、アプリ表示バージョン(`tauri.conf.json` が参照)のもとになる `package.json` と、`src-tauri/Cargo.toml` の両方の `version` を更新してください。
+**リリース**: 検証済みのmainコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)・Windows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)をビルドします。タグと `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` のバージョンが一致し、5成果物群のビルド、Windows署名、macOS署名・notarization、Artifact AttestationとSHA-256検証がすべて通った場合だけ、単一のdraft releaseを作成して公開します。失敗時は公開しません。
 
-**注記**: 配布バイナリはコード署名を行っていません。そのため、macOSでは Gatekeeper の警告が表示されます(右クリック→「開く」を選ぶか、`xattr -dr com.apple.quarantine` で解除してください)。Windowsでは SmartScreen の警告が表示されます。
+2026-09-23時点で署名・notarization用の資格情報は未取得・未登録のため、v2.3.2の公開は保留です。公開前にリポジトリのActions Secretsへ次の値を登録してください。未登録の場合、Release workflowはビルド前に停止します。秘密値をissue、ログ、リポジトリへ記載しないでください。
+
+| Secret | 用途 |
+| --- | --- |
+| `WINDOWS_CERTIFICATE` | Base64化したWindowsコード署名用PFX |
+| `WINDOWS_CERTIFICATE_PASSWORD` | PFXのパスワード |
+| `APPLE_CERTIFICATE` | Base64化したDeveloper ID Application証明書のP12 |
+| `APPLE_CERTIFICATE_PASSWORD` | P12のパスワード |
+| `APPLE_SIGNING_IDENTITY` | 証明書の署名ID |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | Apple notarization用アカウント、アプリ専用パスワード、チームID |
+
+PRではlint、Vitest、build、`cargo check --locked`、ChromiumのPlaywrightスモークテストと依存関係レビューを実行します。Playwright失敗時はスクリーンショット・trace・レポートをActions artifactに保存します。公開物のハッシュはReleaseの`SHA256SUMS.txt`で確認でき、`gh attestation verify <file> --repo dendencat/shakyo`で出所を検証できます。
+
+mainの既存RulesetにはPRのCI `web`・`rust`・`browser`・`dependency-review`を必須チェックとし、レビュー会話の解決を必須にします。既存Ruleset JSONを`gh api repos/dendencat/shakyo/rulesets/19080468 | node scripts/prepare-main-ruleset.mjs > /tmp/shakyo-main-ruleset.json`で変換して差分を確認し、新CIチェックの初回成功後に管理者が`gh api -X PUT repos/dendencat/shakyo/rulesets/19080468 --input /tmp/shakyo-main-ruleset.json`で適用します。リリースタグの作成は管理者のみに制限し、作成後の更新・削除は禁止します。設定案は[release-tag-creation.json](.github/rulesets/release-tag-creation.json)と[release-tags.json](.github/rulesets/release-tags.json)です。後者には管理者のバイパスを設けず、2つのRulesetを併用します。既存Rulesetとの重複を確認してからGitHub側へ適用してください。
 
 実装計画は [PLAN.md](PLAN.md)、開発規約とAIエージェント運用は [AGENTS.md](AGENTS.md) を参照してください。
 
@@ -118,7 +131,7 @@ npm run tauri build
 
 歯車の設定画面は「表示」「エディタ」「Web参照」「OpenAI」に分かれています。「保存」で反映し、「キャンセル」で変更を破棄します。
 
-- **表示**: お手本・解説を設定または各ペインの閉じるボタンで非表示にできます。写経エディタは常に表示します。設定から再表示すると内容や編集履歴を引き継ぎます。リーディングモードではPDF/EPUBの操作UIをホバー・クリック時だけ表示します。デスクトップ版では「常に最前面」も選択できます。コード文字サイズは縮小・拡大・リセットで10〜32pxに変更でき、初期値は14pxです。
+- **表示**: お手本・解説を設定または各ペインの閉じるボタンで非表示にできます。写経エディタは常に表示します。設定から再表示すると内容や編集履歴を引き継ぎます。リーディングモードではPDF/EPUBの操作UIをホバー・クリック時だけ表示します。コード文字サイズは縮小・拡大・リセットで10〜32pxに変更でき、初期値は14pxです。
 - **エディタ**: スペース／タブ、幅2・4・8、自動インデントを選べます。初期値はスペース2・自動インデント有効で、変更後の入力に適用されます。入力済みコードの自動変換は行いません。操作モードはノーマル（初期値）・Vim・Emacs・VSCodeから選べます。主要なキー操作は左の「ショートカット」で確認できます。
 - **Web参照**: URL欄の横のフォルダアイコンはブックマーク、反時計回りの矢印アイコンは履歴を開きます。URL欄を選ぶと過去の履歴候補が開き、入力で絞り込み、矢印キー・Enterで選択、Escapeで閉じられます。設定で候補を無効にしても履歴の記録・一覧は利用できます。
 - **ヘルプ**: 各項目を見出しから開閉できます。「更新履歴」を開くと、v1.0.0からのバージョンを個別に選べます。

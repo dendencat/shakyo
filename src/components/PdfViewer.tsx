@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist'
-import type { PDFPageProxy } from 'pdfjs-dist'
+import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { fitScale, pageCssSize } from '../lib/pdfLayout'
 import {
@@ -26,6 +26,7 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
   const containerRef = useRef<HTMLDivElement>(null)
   const pagesRef = useRef<HTMLDivElement>(null)
   const pageIndexRef = useRef(0)
+  const documentRef = useRef<PDFDocumentProxy | null>(null)
   const wheelRef = useRef({ zoomAt: -Infinity, pageLocked: false, unlockTimer: undefined as ReturnType<typeof setTimeout> | undefined })
   const tocId = `pdf-toc-${useId().replaceAll(':', '')}`
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +56,8 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
 
     const load = async () => {
       const doc = await loadingTask.promise
+      if (cancelled) return
+      documentRef.current = doc
       const entries: PageEntry[] = []
       for (let i = 1; i <= doc.numPages; i++) {
         if (cancelled) return
@@ -74,6 +77,7 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
     })
     return () => {
       cancelled = true
+      documentRef.current = null
       void loadingTask.destroy()
     }
   }, [data])
@@ -95,10 +99,25 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
     setPageIndex(bounded)
     const root = pagesRef.current
     if (root) {
+      if (!readingMode) {
+        root.querySelector(`[data-pdf-page="${bounded}"]`)?.scrollIntoView({ block: 'start' })
+        return
+      }
       root.scrollTop = 0
       root.scrollLeft = 0
     }
-  }, [pages.length])
+  }, [pages.length, readingMode])
+
+  const followDestination = useCallback(async (destination: string | unknown[]) => {
+    const doc = documentRef.current
+    if (!doc) return
+    try {
+      const resolved = typeof destination === 'string' ? await doc.getDestination(destination) : destination
+      const reference = resolved?.[0]
+      if (Number.isInteger(reference)) goToPage(Number(reference))
+      else if (reference && typeof reference === 'object') goToPage(await doc.getPageIndex(reference))
+    } catch { /* 壊れた注釈は無視する */ }
+  }, [goToPage])
 
   useEffect(() => {
     const container = containerRef.current
@@ -187,6 +206,8 @@ export function PdfViewer({ data, readingMode = false }: { data: ArrayBuffer; re
             scrollRoot={scrollRoot}
             forceVisible={readingMode}
             onError={handlePageError}
+            pageIndex={actualIndex}
+            onDestination={followDestination}
           />
         })}
       </div>
@@ -215,6 +236,8 @@ function PdfPage({
   scrollRoot,
   forceVisible,
   onError,
+  pageIndex,
+  onDestination,
 }: {
   page: PDFPageProxy
   baseWidth: number
@@ -223,10 +246,29 @@ function PdfPage({
   scrollRoot: Element | null | undefined
   forceVisible: boolean
   onError: (message: string) => void
+  pageIndex: number
+  onDestination: (destination: string | unknown[]) => void
 }) {
   const slotRef = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
+  const [links, setLinks] = useState<Array<{ rect: [number, number, number, number]; dest: string | unknown[] }>>([])
   const size = pageCssSize({ width: baseWidth, height: baseHeight }, scale)
+
+  useEffect(() => {
+    if (!visible && !forceVisible) return
+    let cancelled = false
+    setLinks([])
+    void page.getAnnotations({ intent: 'display' }).then((annotations: Array<{ subtype?: string; dest?: string | unknown[]; rect?: number[] }>) => {
+      if (cancelled) return
+      setLinks(annotations.flatMap(annotation => annotation.subtype === 'Link'
+        && (typeof annotation.dest === 'string' || Array.isArray(annotation.dest))
+        && annotation.rect?.length === 4
+        && annotation.rect.every(Number.isFinite)
+        ? [{ dest: annotation.dest, rect: annotation.rect as [number, number, number, number] }]
+        : []))
+    }).catch(() => { if (!cancelled) setLinks([]) })
+    return () => { cancelled = true }
+  }, [page, visible, forceVisible])
 
   // effect#A: 可視近傍(上下150%の範囲)に入ったかどうかをIntersectionObserverで監視する。
   // rootMarginは指定したroot自身の境界にのみ適用され、targetとrootの間にある祖先の
@@ -292,6 +334,18 @@ function PdfPage({
   }, [visible, forceVisible, scale, page, onError])
 
   return (
-    <div className="pdf-page-slot" ref={slotRef} style={{ width: size.width, height: size.height }} />
+    <div className="pdf-page-wrapper" data-pdf-page={pageIndex} style={{ width: size.width, height: size.height }}>
+      <div className="pdf-page-slot" ref={slotRef} style={{ width: size.width, height: size.height }} />
+      {links.map((link, index) => {
+        const viewport = page.getViewport({ scale })
+        const first = viewport.convertToViewportPoint(link.rect[0], link.rect[1])
+        const second = viewport.convertToViewportPoint(link.rect[2], link.rect[3])
+        const left = Math.min(first[0], second[0])
+        const top = Math.min(first[1], second[1])
+        return <button key={index} type="button" className="pdf-internal-link" aria-label="文書内リンクを開く"
+          style={{ left, top, width: Math.abs(second[0] - first[0]), height: Math.abs(second[1] - first[1]) }}
+          onClick={() => onDestination(link.dest)} />
+      })}
+    </div>
   )
 }

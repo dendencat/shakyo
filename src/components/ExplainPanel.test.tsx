@@ -28,7 +28,7 @@ afterEach(async () => {
 })
 
 it('shows the current effective model and effort beside an accessible AI pane icon', async () => {
-  saveSettings({
+  await saveSettings({
     apiKey: '',
     model: 'gpt-6-astra',
     reasoningEffort: 'none',

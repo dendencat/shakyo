@@ -5,7 +5,7 @@ import { ReferencePane } from './ReferencePane'
 import type { ReferencePaneCommands } from './ReferencePane'
 import { addWebHistory, addWebBookmark, loadWebHistory, loadWebBookmarks } from '../lib/webReference'
 
-const mocks = vi.hoisted(() => ({ preferences: { showHistorySuggestions: true, fontSize: 14 }, native: false }))
+const mocks = vi.hoisted(() => ({ preferences: { showHistorySuggestions: true, fontSize: 14, readingMode: false }, native: false }))
 vi.mock('../lib/preferences', () => ({ usePreferences: () => mocks.preferences }))
 vi.mock('../lib/openExternal', () => ({ isTauri: () => mocks.native, openExternal: vi.fn() }))
 vi.mock('./PdfViewer', () => ({ PdfViewer: ({ data }: { data: ArrayBuffer }) => <div data-pdf-bytes={data.byteLength} /> }))
@@ -17,7 +17,7 @@ let root: ReturnType<typeof createRoot>
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  mocks.preferences = { showHistorySuggestions: true, fontSize: 14 }
+  mocks.preferences = { showHistorySuggestions: true, fontSize: 14, readingMode: false }
   mocks.native = false
   localStorage.clear()
   container = document.createElement('div')
@@ -110,6 +110,58 @@ it('opens dropped text and PDF files and preserves the reference on a read error
   await dropFile(pdf)
   expect(container.querySelector('[data-pdf-bytes]')?.getAttribute('data-pdf-bytes')).toBe('8')
   expect(container.querySelector('[role="alert"]')).toBeNull()
+  await click('[aria-label="ファイルを閉じる"]')
+  expect(container.querySelector('[data-pdf-bytes]')).toBeNull()
+  expect(container.querySelector('.reference-pane')).not.toBeNull()
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain('ファイル')
+  await dropFile(pdf)
+  expect(container.querySelector('[data-pdf-bytes]')?.getAttribute('data-pdf-bytes')).toBe('8')
+})
+
+it('ignores a pending file read after close and an older read after a newer file opens', async () => {
+  await act(async () => root.render(<ReferencePane resolvedTheme="light" />))
+  const pdf = new File([], 'book.pdf')
+  Object.defineProperty(pdf, 'arrayBuffer', { value: async () => new TextEncoder().encode('%PDF-x00').buffer })
+  await dropFile(pdf)
+  let finishFirst!: (value: string) => void
+  const first = new File([], 'first.txt')
+  Object.defineProperty(first, 'text', { value: () => new Promise<string>(resolve => { finishFirst = resolve }) })
+  await dropFile(first)
+  await click('[aria-label="ファイルを閉じる"]')
+  await act(async () => finishFirst('古い本文'))
+  expect(container.querySelector('.file-name')).toBeNull()
+  expect(container.querySelector('[data-pdf-bytes]')).toBeNull()
+
+  let finishSecond!: (value: string) => void
+  const second = new File([], 'second.txt')
+  Object.defineProperty(second, 'text', { value: () => new Promise<string>(resolve => { finishSecond = resolve }) })
+  await dropFile(second)
+  await dropFile(pdf)
+  await act(async () => finishSecond('古い本文'))
+  expect(container.querySelector('[data-pdf-bytes]')).not.toBeNull()
+  expect(container.querySelector('.file-name')?.textContent).toBe('book.pdf')
+})
+
+it.each([false, true])('keeps the file picker available in reading mode with sidebar=%s', async sidebarEnabled => {
+  mocks.preferences.readingMode = true
+  const sidebar = sidebarEnabled ? document.createElement('div') : null
+  if (sidebar) container.append(sidebar)
+  await act(async () => root.render(<ReferencePane resolvedTheme="light" sidebarTarget={sidebar} />))
+  const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')!
+  const openPicker = vi.spyOn(fileInput, 'click')
+  const pdf = new File([], 'book.pdf')
+  Object.defineProperty(pdf, 'arrayBuffer', { value: async () => new TextEncoder().encode('%PDF-x00').buffer })
+  await dropFile(pdf)
+  expect(container.querySelector('.reference-reading-mode')).not.toBeNull()
+  const openButton = [...container.querySelectorAll<HTMLButtonElement>('.reference-pane button')]
+    .find(button => button.textContent === '参照…')!
+  expect(openButton).toBeDefined()
+  await act(async () => openButton.click())
+  expect(openPicker).toHaveBeenCalledOnce()
+  await click('[aria-label="ファイルを閉じる"]')
+  await dropFile(pdf)
+  expect(container.querySelector('[data-pdf-bytes]')).not.toBeNull()
+  if (sidebar) expect(sidebar.querySelector('[aria-label="ファイルを閉じる"]')).not.toBeNull()
 })
 
 it('rejects a dropped file outside the allowlist', async () => {

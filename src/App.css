@@ -592,6 +592,8 @@
   flex: 0 0 auto;
 }
 
+.setting-label-row > .info-tooltip { margin-left: auto; }
+
 .info-tooltip-button {
   display: inline-flex;
   width: 22px;
@@ -625,7 +627,7 @@
   right: 0;
   visibility: hidden;
   width: max-content;
-  max-width: min(260px, calc(100vw - 96px));
+  max-width: min(190px, calc(100vw - 112px));
   padding: 7px 9px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -677,6 +679,42 @@
 }
 
 /* --- 保存/読込ダイアログ --- */
+
+.download-status {
+  position: relative;
+  display: inline-flex;
+  width: 28px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-sub);
+}
+
+.download-status-saved { color: #198754; }
+.download-status-tooltip {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: calc(100% + 4px);
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: #198754;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: download-saved 2400ms ease both;
+}
+
+@keyframes download-saved {
+  0%, 100% { opacity: 0; transform: translateY(4px); }
+  15%, 75% { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download-status-tooltip { animation: none; }
+}
 
 .snapshot-list {
   display: flex;

@@ -22,7 +22,6 @@ import { ThemeMenu } from './components/ThemeMenu'
 import { ShortcutDialog } from './components/ShortcutPanel'
 import { matchesShortcut, matchesShortcutMenu, useShortcuts } from './lib/shortcuts'
 import { loadPreferences, savePreferences, usePreferences } from './lib/preferences'
-import { applyAlwaysOnTop } from './lib/alwaysOnTop'
 import './App.css'
 
 export default function App() {
@@ -47,11 +46,6 @@ export default function App() {
     const timer = window.setTimeout(() => setNotice(null), 4000)
     return () => window.clearTimeout(timer)
   }, [notice])
-  useEffect(() => {
-    void applyAlwaysOnTop(preferences.alwaysOnTop).catch(() => {
-      notify('常に最前面の設定を適用できませんでした', 'error')
-    })
-  }, [preferences.alwaysOnTop, notify])
   const closePane = (id: 'reference' | 'explain') => {
     try {
       const current = loadPreferences()
@@ -194,6 +188,7 @@ export default function App() {
 
       let run: (() => void) | undefined
       if (matchesShortcut(event, shortcuts.clear)) run = () => editorCommands.current?.clear()
+      else if (matchesShortcut(event, shortcuts.newPage)) run = () => editorCommands.current?.newPage()
       else if (matchesShortcut(event, shortcuts.save)) run = () => editorCommands.current?.save()
       else if (matchesShortcut(event, shortcuts.saveAs)) run = () => editorCommands.current?.saveAs()
       else if (matchesShortcut(event, shortcuts.openReference)) run = () => {

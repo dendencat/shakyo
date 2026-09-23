@@ -80,4 +80,8 @@ it('renders hierarchical table-of-contents entries and selects a target', async 
   await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '1.1')!.click())
   expect(select).toHaveBeenCalledWith('page-2')
   expect(container.querySelector('.reader-toc-group')?.textContent).toBe('第1章')
+  const parentWheel = vi.fn()
+  container.addEventListener('wheel', parentWheel)
+  await act(async () => container.querySelector('nav')!.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 10 })))
+  expect(parentWheel).not.toHaveBeenCalled()
 })

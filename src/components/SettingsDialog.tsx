@@ -4,13 +4,14 @@ import {
   HIGH_PERFORMANCE_MODELS,
   isSettingsStorageKey,
   loadSettings,
+  initializeApiKey,
+  hasConfiguredApiKey,
   normalizeReasoningEffort,
   saveSettings,
   STANDARD_MODELS,
   type ReasoningEffort,
 } from '../lib/settings'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { isTauri } from '../lib/openExternal'
 import { KEY_PREFERENCES, loadPreferences, savePreferences, type Preferences, type EditorMode } from '../lib/preferences'
 import { PANE_LABELS } from '../lib/layout'
 import { InfoTooltip } from './InfoTooltip'
@@ -35,6 +36,8 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
   const [settings, setSettings] = useState(loadSettings)
   const [preferences, setPreferences] = useState(loadPreferences)
   const [error, setError] = useState('')
+  const [keyChanged, setKeyChanged] = useState(false)
+  const [hasKey, setHasKey] = useState(hasConfiguredApiKey)
   const changePreferences = (change: Partial<Preferences>) => {
     setDirty(true)
     setPreferences(current => ({ ...current, ...change }))
@@ -45,6 +48,9 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
   const trapRef = useFocusTrap<HTMLDivElement>(onClose, !embedded)
 
   useEffect(() => {
+    void initializeApiKey().then(() => setHasKey(hasConfiguredApiKey())).catch(() => {
+      setError('APIキーの安全な保存領域を利用できません。旧キーは削除せず保持しています。')
+    })
     // storage イベントは他タブでの localStorage 変更時にのみ発火し、
     // 変更を行った同一タブでは発火しない(ブラウザ仕様)。
     const handleStorage = (e: StorageEvent) => {
@@ -62,9 +68,9 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
     }
   }, [])
 
-  const save = () => {
+  const save = async () => {
     try {
-      saveSettings({ ...settings, apiKey: settings.apiKey.trim(), model: settings.model.trim() || DEFAULT_MODEL })
+      await saveSettings({ ...settings, apiKey: settings.apiKey.trim(), model: settings.model.trim() || DEFAULT_MODEL }, keyChanged)
       savePreferences(preferences)
     } catch {
       const message = '設定を保存できませんでした。保存領域を確認して再度お試しください。'
@@ -117,13 +123,6 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
               リーディングモード
             </label>
           </CheckSetting>
-          <CheckSetting label="常に最前面に表示" info="デスクトップ版のshakyoウィンドウを他のウィンドウより手前に保ちます。Web版では利用できません。">
-            <label className="preference-check">
-              <input type="checkbox" checked={preferences.alwaysOnTop} disabled={!isTauri()}
-                onChange={event => changePreferences({ alwaysOnTop: event.target.checked })} />
-              常に最前面に表示{!isTauri() && '（デスクトップ版のみ）'}
-            </label>
-          </CheckSetting>
         </fieldset>
         <fieldset className="preferences-group"><legend>エディタ</legend>
           <FieldSetting id="setting-editor-mode" label="エディタモード" info="通常操作またはVim・Emacs・VSCode互換のキー操作を選びます。"><select id="setting-editor-mode" value={preferences.editorMode} onChange={e => changePreferences({ editorMode: e.target.value as EditorMode })}>
@@ -146,19 +145,21 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
           <p className="hint">無効にしても履歴は記録され、履歴アイコンから確認できます。</p>
         </fieldset>
         <fieldset className="preferences-group"><legend>OpenAI</legend>
-        <FieldSetting id="setting-api-key" label="OpenAI APIキー" info="AI解説の認証に使用します。現在はこのブラウザのlocalStorageに保存されるため、共有端末では保存しないでください。">
+        <FieldSetting id="setting-api-key" label="OpenAI APIキー" info="AI解説の認証に使用します。Web版はこのタブのメモリ、デスクトップ版はOSの資格情報ストアに保存します。">
           <input
             id="setting-api-key"
             type="password"
             value={settings.apiKey}
-            placeholder="sk-..."
+            placeholder={hasKey ? '設定済み（変更する場合は入力）' : 'sk-...'}
             onChange={(e) => {
               setDirty(true)
+              setKeyChanged(true)
               setSettings((s) => ({ ...s, apiKey: e.target.value }))
             }}
             autoComplete="off"
           />
         </FieldSetting>
+        {hasKey && <button type="button" onClick={() => { setKeyChanged(true); setHasKey(false); setSettings(s => ({ ...s, apiKey: '' })); setDirty(true) }}>APIキーを削除</button>}
         <FieldSetting id="setting-model" label="モデル" info="AI解説に使用するモデルを選びます。高性能モデルは詳細設定で有効化でき、料金が高くなる場合があります。">
           <select
             id="setting-model"
@@ -229,7 +230,7 @@ export function SettingsDialog({ onClose, onSaved, onError, embedded = false }: 
           </p>
         </details>
         <p className="hint">
-          APIキーはこのブラウザのlocalStorageにのみ保存され、OpenAI API以外には送信されません。
+          APIキーはWeb版では再読み込みで消去され、デスクトップ版ではOSの資格情報ストアに保存されます。OpenAI API以外には送信されません。
         </p>
         <details className="field-advanced">
           <summary>送信する情報と料金について</summary>

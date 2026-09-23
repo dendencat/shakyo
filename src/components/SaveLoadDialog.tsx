@@ -3,6 +3,7 @@ import type { LangId } from '../lib/langs'
 import { deleteSnapshot, listSnapshots, saveSnapshot } from '../lib/snapshots'
 import type { Snapshot } from '../lib/snapshots'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { Icon } from './Icon'
 
 export function SaveLoadDialog({
   code,
@@ -24,6 +25,8 @@ export function SaveLoadDialog({
   const [name, setName] = useState('')
   const [snapshots, setSnapshots] = useState(() => listSnapshots())
   const [error, setError] = useState<string | null>(null)
+  const [downloadSaved, setDownloadSaved] = useState(false)
+  const downloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose, !embedded)
   const trimmedName = name.trim()
@@ -40,6 +43,10 @@ export function SaveLoadDialog({
     nameRef.current?.focus()
     nameRef.current?.select()
   }, [focusNameSignal])
+
+  useEffect(() => () => {
+    if (downloadTimer.current) clearTimeout(downloadTimer.current)
+  }, [])
 
   const saveInApp = () => {
     if (!canSave) return
@@ -68,7 +75,10 @@ export function SaveLoadDialog({
     a.href = url
     a.download = `${safeName}.${lang}`
     a.click()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    setDownloadSaved(true)
+    if (downloadTimer.current) clearTimeout(downloadTimer.current)
+    downloadTimer.current = setTimeout(() => setDownloadSaved(false), 2_400)
   }
 
   const load = (snapshot: Snapshot) => {
@@ -110,6 +120,10 @@ export function SaveLoadDialog({
           <button onClick={saveAsFile} disabled={!canSave}>
             ファイルとして保存
           </button>
+          <span className={`download-status${downloadSaved ? ' download-status-saved' : ''}`} aria-live="polite" aria-label={downloadSaved ? 'Saved!' : 'ダウンロード'}>
+            <Icon name={downloadSaved ? 'check' : 'download'} />
+            {downloadSaved && <span className="download-status-tooltip" role="status">Saved!</span>}
+          </span>
           <button className="primary" onClick={saveInApp} disabled={!canSave}>
             アプリ内に保存
           </button>

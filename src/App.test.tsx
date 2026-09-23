@@ -8,6 +8,7 @@ const paneCommands = vi.hoisted(() => ({
   clear: vi.fn(),
   save: vi.fn(),
   saveAs: vi.fn(),
+  newPage: vi.fn(),
   openFilePicker: vi.fn(),
   focusExplain: vi.fn(),
 }))
@@ -16,7 +17,7 @@ vi.mock('./components/ReferencePane', () => ({ ReferencePane: ({ commandsRef }: 
   return <textarea aria-label="reference-state" defaultValue="reference" />
 } }))
 vi.mock('./components/ShakyoEditor', () => ({ ShakyoEditor: ({ commandsRef }: { commandsRef?: { current: unknown } }) => {
-  if (commandsRef) commandsRef.current = { clear: paneCommands.clear, save: paneCommands.save, saveAs: paneCommands.saveAs }
+  if (commandsRef) commandsRef.current = { clear: paneCommands.clear, newPage: paneCommands.newPage, save: paneCommands.save, saveAs: paneCommands.saveAs }
   return <textarea aria-label="editor-state" defaultValue="draft" />
 } }))
 vi.mock('./components/ExplainPanel', () => ({ ExplainPanel: ({ commandsRef }: { commandsRef?: { current: unknown } }) => {
@@ -82,6 +83,10 @@ it('restores hidden panes with application shortcuts and prevents browser defaul
   expect(paneCommands.saveAs).toHaveBeenCalledOnce()
   await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'D', altKey: true, shiftKey: true, bubbles: true, cancelable: true })))
   expect(paneCommands.clear).toHaveBeenCalledOnce()
+  const newPageEvent = new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, bubbles: true, cancelable: true })
+  await act(async () => window.dispatchEvent(newPageEvent))
+  expect(newPageEvent.defaultPrevented).toBe(true)
+  expect(paneCommands.newPage).toHaveBeenCalledOnce()
 })
 it('opens, switches and closes icon menus without replacing the working panes', async () => {
   await act(async () => root.render(<App />))

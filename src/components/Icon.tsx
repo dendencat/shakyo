@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react'
 
-export type IconName = 'files' | 'extensions' | 'settings' | 'help' | 'sun' | 'moon' | 'system' | 'layout' | 'close' | 'back' | 'forward' | 'reload' | 'go' | 'bookmark' | 'folder' | 'history' | 'shortcuts' | 'editor' | 'reference' | 'aiExplain' | 'toc' | 'info'
+export type IconName = 'files' | 'extensions' | 'settings' | 'help' | 'sun' | 'moon' | 'system' | 'layout' | 'close' | 'back' | 'forward' | 'reload' | 'go' | 'bookmark' | 'folder' | 'history' | 'shortcuts' | 'editor' | 'reference' | 'aiExplain' | 'toc' | 'info' | 'download' | 'check'
 const paths: Record<IconName, React.ReactNode> = {
   folder: <path d="M3 6h7l2 3h9v11H3zM3 6V4h7l2 2h8v3" />,
   history: <><path d="M3 4v6h6M3 10a9 9 0 1 1 1 8M12 7v5l4 2" /></>,
@@ -24,6 +24,8 @@ const paths: Record<IconName, React.ReactNode> = {
   aiExplain: <><path d="m15 4 5 5L8.5 20.5a2.1 2.1 0 0 1-3-3Z" /><path d="m6.5 16.5 5 5M6 3v4M4 5h4M18 15v4M16 17h4" /></>,
   toc: <><path d="M9 6h12M9 12h12M9 18h12" /><path d="M4 6h.01M4 12h.01M4 18h.01" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></>,
+  download: <><path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4" /></>,
+  check: <path d="m4 12 5 5L20 6" />,
 }
 export function Icon({ name }: { name: IconName }) {
   return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{paths[name]}</svg>

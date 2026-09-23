@@ -7,6 +7,12 @@ export interface ReleaseNote {
 // v1.3.0 cac6604, app-v1.4.0 ae104b3, v2.0.0/app-v2.0.0 3a7b0dc,
 // app-v2.1.0 5408ad3. Duplicate tags are represented by a single version.
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '2.3.2', changes: [
+    'PDF・EPUBの再読み込み、文書内リンク、埋め込み画像と目次操作を改善しました。',
+    '保存の状態表示、新規ページ、設定ツールチップと置換ショートカットを改善しました。',
+    'Web版APIキーはセッション中だけ保持し、デスクトップ版はOS資格情報ストアに保存します。',
+    'Web・4環境のデスクトップ成果物を単一タグで検証するCIとリリース手順を追加しました。',
+  ] },
   { version: '2.3.1', changes: [
     'PDF・EPUBの倍率直接入力とCtrl+ホイール操作、上下端からのページ送りを追加しました。',
     'PDF・EPUBの階層目次と、円形表示の前後ページボタンを追加しました。',

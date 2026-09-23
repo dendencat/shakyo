@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isTauri } from './openExternal'
 
 export const DEFAULT_MODEL = 'gpt-5.6-luna'
 export const STANDARD_MODELS = ['gpt-5.6-luna', 'gpt-5.6-terra'] as const
@@ -13,6 +14,14 @@ const KEY_MODEL = 'shakyo.openai.model'
 const KEY_REASONING_EFFORT = 'shakyo.openai.reasoningEffort'
 const KEY_HIGH_PERFORMANCE_MODELS = 'shakyo.openai.highPerformanceModels'
 const CHANGE_EVENT = 'shakyo:settings'
+let sessionApiKey = ''
+let desktopHasKey = false
+let desktopReady: Promise<void> | null = null
+export function resetApiKeyStateForTest(): void {
+  sessionApiKey = ''
+  desktopHasKey = false
+  desktopReady = null
+}
 export const KEY_DRAFT = 'shakyo.editor.draft'
 export const KEY_EDITOR_LANG = 'shakyo.editor.lang'
 
@@ -65,19 +74,54 @@ export function loadSettings(): Settings {
   const allowHighPerformanceModels = localStorage.getItem(KEY_HIGH_PERFORMANCE_MODELS) === 'true'
   const model = localStorage.getItem(KEY_MODEL) ?? DEFAULT_MODEL
   return normalizeSettings({
-    apiKey: localStorage.getItem(KEY_API_KEY) ?? '',
+    apiKey: isTauri() ? '' : sessionApiKey,
     model,
     reasoningEffort: normalizeReasoningEffort(localStorage.getItem(KEY_REASONING_EFFORT), model),
     allowHighPerformanceModels,
   })
 }
 
-export function saveSettings(settings: Settings) {
+export function hasConfiguredApiKey(): boolean {
+  return isTauri() ? desktopHasKey : !!sessionApiKey
+}
+
+export function initializeApiKey(): Promise<void> {
+  if (desktopReady) return desktopReady
+  desktopReady = (async () => {
+    const legacy = localStorage.getItem(KEY_API_KEY)
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      if (legacy) {
+        await invoke('set_openai_key', { key: legacy })
+        localStorage.removeItem(KEY_API_KEY)
+      }
+      desktopHasKey = await invoke<boolean>('has_openai_key')
+    } else if (legacy) {
+      sessionApiKey = legacy
+      localStorage.removeItem(KEY_API_KEY)
+    }
+    window.dispatchEvent(new Event(CHANGE_EVENT))
+  })().catch(error => {
+    desktopReady = null
+    throw error
+  })
+  return desktopReady
+}
+
+export async function saveSettings(settings: Settings, keyChanged = true): Promise<void> {
   const normalized = normalizeSettings(settings)
-  // 静的なクライアントアプリとして、利用者が入力したキーをこのオリジン内だけに保存する設計。
-  // 保存先と送信先は設定画面で明示し、OpenAI以外へは送信しない。
-  // codeql[js/clear-text-storage-of-sensitive-data]
-  localStorage.setItem(KEY_API_KEY, normalized.apiKey)
+  await initializeApiKey()
+  if (keyChanged) {
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      if (normalized.apiKey) await invoke('set_openai_key', { key: normalized.apiKey })
+      else await invoke('delete_openai_key')
+      desktopHasKey = !!normalized.apiKey
+    } else {
+      sessionApiKey = normalized.apiKey
+    }
+  }
+  localStorage.removeItem(KEY_API_KEY)
   localStorage.setItem(KEY_MODEL, normalized.model)
   localStorage.setItem(KEY_REASONING_EFFORT, normalized.reasoningEffort)
   localStorage.setItem(KEY_HIGH_PERFORMANCE_MODELS, String(normalized.allowHighPerformanceModels))
@@ -87,6 +131,9 @@ export function saveSettings(settings: Settings) {
 export function useSettings(): Settings {
   const [settings, setSettings] = useState(loadSettings)
   useEffect(() => {
+    void initializeApiKey().catch(() => {
+      // Legacy key stays in localStorage when OS credential migration fails.
+    })
     const update = () => setSettings(loadSettings())
     const handleStorage = (event: StorageEvent) => {
       if (isSettingsStorageKey(event.key)) update()

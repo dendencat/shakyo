@@ -14,8 +14,8 @@ AIエージェント(Claude Code等)向けのプロジェクトガイド。`CLAU
 
 - Vite + React + TypeScript(静的フロントエンド、サーバーなし)
 - CodeMirror 6(エディタ)、pdf.js(PDF表示)
-- OpenAI APIをブラウザから直接呼び出し(APIキーはlocalStorage、ユーザー自身が設定)
-- 将来: Tauriでデスクトップアプリ化する前提。**サーバーサイド依存を持ち込まないこと**
+- OpenAI APIはWeb版でブラウザから、Tauri版でRustから呼び出す。キーはWeb版ではメモリのみ、Tauri版ではOSの資格情報ストアに保存する
+- Tauri v2デスクトップ版も実装済み。**サーバーサイド依存を持ち込まないこと**
 
 ## 開発コマンド
 

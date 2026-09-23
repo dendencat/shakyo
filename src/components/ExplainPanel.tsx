@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { buildExplanationMessages, streamChat, streamExplanation } from '../lib/openai'
-import { normalizeSettings, useSettings, type ReasoningEffort } from '../lib/settings'
+import { hasConfiguredApiKey, initializeApiKey, normalizeSettings, useSettings, type ReasoningEffort } from '../lib/settings'
 import { SafeMarkdown } from './SafeMarkdown'
 import { IconButton } from './Icon'
 import { PaneTitle } from './PaneTitle'
@@ -56,7 +56,11 @@ export function ExplainPanel({
   )
 
   const explain = async () => {
-    if (!effectiveSettings.apiKey) {
+    try { await initializeApiKey() } catch {
+      setError('APIキーの安全な保存領域を利用できません。設定画面で確認してください。')
+      return
+    }
+    if (!hasConfiguredApiKey()) {
       setError('OpenAI APIキーが未設定です。右上の「設定」から登録してください。')
       return
     }
@@ -98,7 +102,12 @@ export function ExplainPanel({
     const nextQuestion = question.trim()
     if (running || !nextQuestion || text === '' || codeRef.current == null) return
 
-    if (!effectiveSettings.apiKey) {
+    try { await initializeApiKey() } catch {
+      setError('APIキーの安全な保存領域を利用できません。設定画面で確認してください。')
+      return
+    }
+
+    if (!hasConfiguredApiKey()) {
       setError('OpenAI APIキーが未設定です。右上の「設定」から登録してください。')
       return
     }

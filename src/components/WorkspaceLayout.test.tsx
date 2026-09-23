@@ -21,6 +21,8 @@ vi.mock('../lib/settings', async (importOriginal) => ({
   ...await importOriginal<typeof import('../lib/settings')>(),
   loadSettings: () => ({ apiKey: 'test', model: 'test', reasoningEffort: 'none', allowHighPerformanceModels: false }),
   useSettings: () => ({ apiKey: 'test', model: 'test', reasoningEffort: 'none', allowHighPerformanceModels: false }),
+  hasConfiguredApiKey: () => true,
+  initializeApiKey: () => Promise.resolve(),
 }))
 vi.mock('../lib/openai', () => ({ streamExplanation: vi.fn(), streamChat: vi.fn(), buildExplanationMessages: vi.fn() }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
