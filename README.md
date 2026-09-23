@@ -99,18 +99,9 @@ npm run tauri build
 
 生成されたインストーラは `src-tauri/target/release/bundle/` 以下に出力されます。
 
-**リリース**: mainのpush CIが成功したコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)・Windows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)をビルドします。タグのコミットと現在のmain・成功済みCIのコミット、`package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` のバージョンが一致し、5成果物群のビルド、Windows署名、macOS署名・notarization、Artifact AttestationとSHA-256検証がすべて通った場合だけ、単一のdraft releaseを作成して公開します。CIが未完了の場合は最大8分待ち、失敗または時間切れなら公開しません。
+**GitHub Release**: mainのpush CIが成功したコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)とLinux(.deb/.AppImage)をビルドします。タグ・main・成功済みCIのコミットと各バージョンが一致し、Artifact AttestationとSHA-256検証が通った場合だけ公開します。CIが失敗または時間切れの場合は公開しません。今回のmacOS版は保留します。
 
-2026-09-23時点で署名・notarization用の資格情報は未取得・未登録のため、v2.3.2の公開は保留です。公開前にリポジトリのActions Secretsへ次の値を登録してください。未登録の場合、Release workflowはビルド前に停止します。秘密値をissue、ログ、リポジトリへ記載しないでください。
-
-| Secret | 用途 |
-| --- | --- |
-| `WINDOWS_CERTIFICATE` | Base64化したWindowsコード署名用PFX |
-| `WINDOWS_CERTIFICATE_PASSWORD` | PFXのパスワード |
-| `APPLE_CERTIFICATE` | Base64化したDeveloper ID Application証明書のP12 |
-| `APPLE_CERTIFICATE_PASSWORD` | P12のパスワード |
-| `APPLE_SIGNING_IDENTITY` | 証明書の署名ID |
-| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | Apple notarization用アカウント、アプリ専用パスワード、チームID |
+**Windows Store**: Windows 11 x64版はMSI/EXEを直接配布せず、予約済みの`shakyo`製品へMSIXを手動提出します。[Store MSIX workflow](.github/workflows/store-msix.yml)をタグ指定で起動し、Actions artifactから提出用の未署名MSIXを取得します。Partner Centerの製品IDは`dendencat.shakyo`、Publisherは`CN=A56B1A7A-89BE-477F-BC7A-5CDF09C69BC8`、PublisherDisplayNameは`dendencat`です。Windows 11実機で起動・WebView2・APIキー保存を確認し、Windows App Certification Kitで検証してからPartner Centerへアップロードします。Store提出用MSIXはMicrosoftが審査後に署名するため、Windowsのコード署名証明書は取得しません。自己署名を使う場合は私的な実機試験に限り、秘密鍵をリポジトリや公開物に含めません。Store審査が終わるまでMSIXをGitHub Releaseから直接配布しません。
 
 PRではlint、Vitest、build、`cargo check --locked`、ChromiumのPlaywrightスモークテストと依存関係レビューを実行します。Playwright失敗時はスクリーンショット・trace・レポートをActions artifactに保存します。公開物のハッシュはReleaseの`SHA256SUMS.txt`で確認でき、`gh attestation verify <file> --repo dendencat/shakyo`で出所を検証できます。
 

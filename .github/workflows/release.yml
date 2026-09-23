@@ -63,21 +63,6 @@ jobs:
           done
           echo "::error::Main push CI was not successful within eight minutes for $EXPECTED_SHA"
           exit 1
-      - name: Require signing and notarization credentials
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for name in WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            if [[ -z "${!name}" ]]; then echo "::error::$name is required"; exit 1; fi
-          done
-
   web:
     needs: prepare
     runs-on: ubuntu-22.04
@@ -116,15 +101,7 @@ jobs:
 
   build:
     needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-22.04, id: linux, args: '' }
-          - { os: windows-latest, id: windows, args: '' }
-          - { os: macos-latest, id: macos-arm64, args: '--target aarch64-apple-darwin' }
-          - { os: macos-latest, id: macos-x64, args: '--target x86_64-apple-darwin' }
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     permissions:
       contents: read
@@ -144,75 +121,22 @@ jobs:
         with:
           workspaces: src-tauri
       - name: Install Linux build dependencies
-        if: matrix.id == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
-      - name: Install macOS Rust target
-        if: startsWith(matrix.id, 'macos-')
-        run: rustup target add ${{ matrix.id == 'macos-arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev xdg-utils
       - run: npm ci
-      - name: Import Windows signing certificate
-        if: matrix.id == 'windows'
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          if (!$env:WINDOWS_CERTIFICATE -or !$env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'Windows signing credentials are required' }
-          $pfx = Join-Path $env:RUNNER_TEMP 'signing.pfx'
-          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
-          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
-          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password | Where-Object HasPrivateKey | Select-Object -First 1
-          Remove-Item $pfx
-          if (!$cert -or !$cert.HasPrivateKey) { throw 'Windows certificate import failed' }
-          @{ bundle = @{ windows = @{ certificateThumbprint = $cert.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $env:RUNNER_TEMP 'windows-sign.json')
-      - name: Build Windows installers
-        if: matrix.id == 'windows'
-        shell: pwsh
-        run: npm run tauri -- build --config (Join-Path $env:RUNNER_TEMP 'windows-sign.json')
-      - name: Verify Windows signatures
-        if: matrix.id == 'windows'
-        shell: pwsh
-        run: |
-          $tool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse | Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
-          if (!$tool) { throw 'SignTool is unavailable' }
-          $files = Get-ChildItem src-tauri/target/release -Recurse -File | Where-Object { $_.FullName -match '\\bundle\\' -and $_.Extension -in '.msi', '.exe' }
-          if (!$files -or !($files.Extension -contains '.msi') -or !($files.Extension -contains '.exe')) { throw 'Windows installers are missing' }
-          foreach ($file in $files) { & $tool.FullName verify /pa /v $file.FullName; if ($LASTEXITCODE -ne 0) { throw "Unsigned installer: $($file.Name)" } }
-      - name: Build macOS installers
-        if: startsWith(matrix.id, 'macos-')
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run tauri -- build ${{ matrix.args }}
-      - name: Verify macOS signing and notarization
-        if: startsWith(matrix.id, 'macos-')
-        run: |
-          set -euo pipefail
-          find src-tauri/target -path '*/release/bundle/dmg/*.dmg' -print -quit | grep -q .
-          find src-tauri/target -path '*/release/bundle/macos/*.app' -print -quit | grep -q .
-          while IFS= read -r -d '' app; do
-            codesign --verify --deep --strict --verbose=2 "$app"
-            xcrun stapler validate "$app"
-          done < <(find src-tauri/target -path '*/release/bundle/macos/*.app' -print0)
       - name: Build Linux installers
-        if: matrix.id == 'linux'
         run: npm run tauri -- build
       - name: Collect release assets
         env:
-          RELEASE_PLATFORM: ${{ matrix.id }}
+          RELEASE_PLATFORM: linux
         run: node scripts/collect-release-assets.mjs
       - uses: actions/attest@c32b4b8b198b65d0bd9d63490e847ff7b53989d4 # v4.0.0
         with:
           subject-path: release-assets/*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-${{ matrix.id }}
+          name: release-linux
           path: release-assets/*
           if-no-files-found: error
           retention-days: 14
@@ -239,7 +163,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          for platform in web linux windows macos-arm64 macos-x64; do
+          for platform in web linux; do
             compgen -G "release-assets/${platform}-*" >/dev/null || { echo "::error::Missing $platform assets"; exit 1; }
           done
           cd release-assets

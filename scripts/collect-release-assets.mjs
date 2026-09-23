@@ -5,9 +5,6 @@ const platform = process.env.RELEASE_PLATFORM
 const version = JSON.parse(await import('../package.json', { with: { type: 'json' } })).version
 const suffixes = {
   linux: ['.deb', '.AppImage'],
-  windows: ['.msi', '.exe'],
-  'macos-arm64': ['.dmg'],
-  'macos-x64': ['.dmg'],
 }[platform]
 
 if (!suffixes) throw new Error('Unknown release platform')

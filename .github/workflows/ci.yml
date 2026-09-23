@@ -25,6 +25,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: node scripts/store-msix.test.mjs
       - run: npm run lint
       - run: npm test
       - run: npm run build
