@@ -99,7 +99,7 @@ npm run tauri build
 
 生成されたインストーラは `src-tauri/target/release/bundle/` 以下に出力されます。
 
-**リリース**: 検証済みのmainコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)・Windows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)をビルドします。タグと `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` のバージョンが一致し、5成果物群のビルド、Windows署名、macOS署名・notarization、Artifact AttestationとSHA-256検証がすべて通った場合だけ、単一のdraft releaseを作成して公開します。失敗時は公開しません。
+**リリース**: mainのpush CIが成功したコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)・Windows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)をビルドします。タグのコミットと現在のmain・成功済みCIのコミット、`package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` のバージョンが一致し、5成果物群のビルド、Windows署名、macOS署名・notarization、Artifact AttestationとSHA-256検証がすべて通った場合だけ、単一のdraft releaseを作成して公開します。CIが未完了の場合は最大8分待ち、失敗または時間切れなら公開しません。
 
 2026-09-23時点で署名・notarization用の資格情報は未取得・未登録のため、v2.3.2の公開は保留です。公開前にリポジトリのActions Secretsへ次の値を登録してください。未登録の場合、Release workflowはビルド前に停止します。秘密値をissue、ログ、リポジトリへ記載しないでください。
 
@@ -114,7 +114,7 @@ npm run tauri build
 
 PRではlint、Vitest、build、`cargo check --locked`、ChromiumのPlaywrightスモークテストと依存関係レビューを実行します。Playwright失敗時はスクリーンショット・trace・レポートをActions artifactに保存します。公開物のハッシュはReleaseの`SHA256SUMS.txt`で確認でき、`gh attestation verify <file> --repo dendencat/shakyo`で出所を検証できます。
 
-mainの既存RulesetにはPRのCI `web`・`rust`・`browser`・`dependency-review`を必須チェックとし、レビュー会話の解決を必須にします。既存Ruleset JSONを`gh api repos/dendencat/shakyo/rulesets/19080468 | node scripts/prepare-main-ruleset.mjs > /tmp/shakyo-main-ruleset.json`で変換して差分を確認し、新CIチェックの初回成功後に管理者が`gh api -X PUT repos/dendencat/shakyo/rulesets/19080468 --input /tmp/shakyo-main-ruleset.json`で適用します。リリースタグの作成は管理者のみに制限し、作成後の更新・削除は禁止します。設定案は[release-tag-creation.json](.github/rulesets/release-tag-creation.json)と[release-tags.json](.github/rulesets/release-tags.json)です。後者には管理者のバイパスを設けず、2つのRulesetを併用します。既存Rulesetとの重複を確認してからGitHub側へ適用してください。
+2026-09-23にmainのRuleset（ID `19080468`）へCI `web`・`rust`・`browser`・`dependency-review`の必須チェックとレビュー会話の解決条件を適用しました。変更案は`gh api repos/dendencat/shakyo/rulesets/19080468 | node scripts/prepare-main-ruleset.mjs`で再生成できます。リリースタグは、管理者だけが作成できるRuleset（ID `23853970`）と、作成後の更新・削除を禁止するRuleset（ID `23854004`）を適用済みです。設定の正典は[release-tag-creation.json](.github/rulesets/release-tag-creation.json)と[release-tags.json](.github/rulesets/release-tags.json)です。
 
 実装計画は [PLAN.md](PLAN.md)、開発規約とAIエージェント運用は [AGENTS.md](AGENTS.md) を参照してください。
 

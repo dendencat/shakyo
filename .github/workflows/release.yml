@@ -14,7 +14,10 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
     outputs:
       sha: ${{ steps.verify.outputs.sha }}
     steps:
@@ -33,6 +36,33 @@ jobs:
           [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || { echo '::error::Tag must point to the current main commit'; exit 1; }
           node scripts/check-release-version.mjs "$TAG"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require successful main push CI for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ steps.verify.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 48); do
+            response=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f branch=main -f event=push -f head_sha="$EXPECTED_SHA" -f per_page=100)
+            state=$(jq -r --arg sha "$EXPECTED_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")]
+              | sort_by(.created_at, .run_attempt) | last
+              | if . == null then "pending"
+                elif .status == "completed" and .conclusion == "success" then "success"
+                elif .status == "completed" then "failed"
+                else "pending" end
+            ' <<< "$response")
+            case "$state" in
+              success) echo "CI passed for $EXPECTED_SHA"; exit 0 ;;
+              failed) echo "::error::Main push CI did not pass for $EXPECTED_SHA"; exit 1 ;;
+              pending) ;;
+              *) echo "::error::Unexpected CI state: $state"; exit 1 ;;
+            esac
+            if (( attempt < 48 )); then sleep 10; fi
+          done
+          echo "::error::Main push CI was not successful within eight minutes for $EXPECTED_SHA"
+          exit 1
       - name: Require signing and notarization credentials
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
