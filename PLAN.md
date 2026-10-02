@@ -117,6 +117,6 @@ CodeMirror 6。言語選択(または拡張子から自動判定)でハイライ
 ## v2.3.4 実装・受け入れ条件
 
 - EPUB表示: macOSで画像だけ表示され本文の文字が見えない問題を修正する。本文の可読性を単体テストで検証し、macOS実機での動作確認は実施結果を明記する。
-- GitHub Release: Webアーカイブ、Linuxの`.deb`・`.AppImage`に加え、Windows x64の`.msi`を保護タグから作成する。成果物の来歴とSHA-256を検証して公開する。macOS版の配布は保留する。
+- GitHub Release: Webアーカイブ、Linuxの`.deb`・`.AppImage`、Windows x64の`.msi`、Apple Silicon・Intel両対応のmacOSユニバーサル`.dmg`を保護タグから作成する。DMGを含む必須成果物の来歴とSHA-256を検証して公開する。DMGはコード署名・Appleの公証を行わず、Gatekeeperの警告・ブロックの可能性を案内する。
 - Windows Store: 提出用MSIXは既存の手動workflowとPartner Centerへの提出手順を維持し、GitHub Releaseには添付しない。
 - 検証: バージョンを`2.3.4`に揃え、単体テスト・ビルド・lint・Release workflowの成果物検査を通す。macOSとWindowsの実機で未確認の操作は検証済みと記載しない。

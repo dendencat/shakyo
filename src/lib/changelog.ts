@@ -10,6 +10,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   { version: '2.3.4', changes: [
     'macOSでEPUBの画像は表示される一方、本文の文字が見えない問題を修正しました。',
     'Windows x64向けMSIをGitHub Releaseから配布します。',
+    'Apple Silicon・Intel両対応のmacOS用DMGをGitHub Releaseから配布します（コード署名・Appleの公証なし）。',
   ] },
   { version: '2.3.3', changes: [
     'Linux版の配布ファイルを収集する処理を修正しました。',

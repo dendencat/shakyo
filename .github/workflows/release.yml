@@ -179,8 +179,48 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  macos:
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: Swatinem/rust-cache@401aff9a7a08acb9d27b64936a90db81024cff97 # v2.8.2
+        with:
+          workspaces: src-tauri
+      - name: Install macOS Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - run: npm ci
+      - name: Build universal macOS DMG
+        run: npm run tauri -- build --target universal-apple-darwin --bundles dmg
+      - name: Collect release assets
+        env:
+          RELEASE_PLATFORM: macos
+        run: node scripts/collect-release-assets.mjs
+      - uses: actions/attest@c32b4b8b198b65d0bd9d63490e847ff7b53989d4 # v4.0.0
+        with:
+          subject-path: release-assets/*.dmg
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-macos
+          path: release-assets/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
-    needs: [prepare, web, build, windows]
+    needs: [prepare, web, build, windows, macos]
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     permissions:
@@ -205,6 +245,7 @@ jobs:
             compgen -G "release-assets/${platform}-*" >/dev/null || { echo "::error::Missing $platform assets"; exit 1; }
           done
           compgen -G 'release-assets/windows-*.msi' >/dev/null || { echo '::error::Missing Windows MSI'; exit 1; }
+          compgen -G 'release-assets/macos-*.dmg' >/dev/null || { echo '::error::Missing macOS DMG'; exit 1; }
           cd release-assets
           for file in *; do gh attestation verify "$file" --repo "$GITHUB_REPOSITORY"; done
           sha256sum * > SHA256SUMS.txt
