@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 test('collects versioned Linux installers after reading package version', () => {
   const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
@@ -13,7 +14,7 @@ test('collects versioned Linux installers after reading package version', () => 
   mkdirSync(join(bundle, 'appimage'), { recursive: true })
   writeFileSync(join(bundle, 'deb', `shakyo_${version}_amd64.deb`), 'deb')
   writeFileSync(join(bundle, 'appimage', `shakyo_${version}_amd64.AppImage`), 'appimage')
-  const result = spawnSync(process.execPath, [new URL('./collect-release-assets.mjs', import.meta.url).pathname], {
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('./collect-release-assets.mjs', import.meta.url))], {
     cwd: root,
     env: { ...process.env, RELEASE_PLATFORM: 'linux' },
     encoding: 'utf8',
@@ -21,4 +22,25 @@ test('collects versioned Linux installers after reading package version', () => 
   assert.equal(result.status, 0, result.stderr)
   assert.equal(readFileSync(join(root, 'release-assets', `linux-shakyo_${version}_amd64.deb`), 'utf8'), 'deb')
   assert.equal(readFileSync(join(root, 'release-assets', `linux-shakyo_${version}_amd64.AppImage`), 'utf8'), 'appimage')
+})
+
+test('collects versioned Windows MSI and requires it to exist', () => {
+  const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+  const root = mkdtempSync(join(tmpdir(), 'shakyo-release-assets-'))
+  const bundle = join(root, 'src-tauri', 'target', 'x86_64-pc-windows-msvc', 'release', 'bundle', 'msi')
+  mkdirSync(bundle, { recursive: true })
+  const command = [fileURLToPath(new URL('./collect-release-assets.mjs', import.meta.url))]
+  const options = { cwd: root, env: { ...process.env, RELEASE_PLATFORM: 'windows' }, encoding: 'utf8' }
+  writeFileSync(join(bundle, 'shakyo_0.0.0_x64.msi'), 'old')
+  const missing = spawnSync(process.execPath, command, options)
+  assert.notEqual(missing.status, 0)
+  assert.match(missing.stderr, /Missing windows \.msi installer/)
+
+  writeFileSync(join(bundle, `shakyo_${version}_x64.msi`), 'msi')
+  writeFileSync(join(bundle, `shakyo_${version}_x64.exe`), 'exe')
+  const result = spawnSync(process.execPath, command, options)
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(readFileSync(join(root, 'release-assets', `windows-shakyo_${version}_x64.msi`), 'utf8'), 'msi')
+  assert.equal(existsSync(join(root, 'release-assets', `windows-shakyo_${version}_x64.exe`)), false)
+  assert.equal(existsSync(join(root, 'release-assets', 'windows-shakyo_0.0.0_x64.msi')), false)
 })

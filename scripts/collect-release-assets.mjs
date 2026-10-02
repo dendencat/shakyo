@@ -5,6 +5,7 @@ const platform = process.env.RELEASE_PLATFORM
 const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 const suffixes = {
   linux: ['.deb', '.AppImage'],
+  windows: ['.msi'],
 }[platform]
 
 if (!suffixes) throw new Error('Unknown release platform')

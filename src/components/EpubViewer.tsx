@@ -11,6 +11,7 @@ import {
   type ReaderTocItem,
 } from './ReaderControls'
 import { findInternalBookDocument, resolveInternalBookLink, secureEpubContents, secureEpubDocument, secureEpubSerializedHtml } from '../lib/epubSecurity'
+import { applyEpubAppearance } from '../lib/epubAppearance'
 import { openExternal } from '../lib/openExternal'
 import { readerZoomFromWheel } from '../lib/readerZoom'
 import { pageTurnFromWheel } from '../lib/readerNavigation'
@@ -104,7 +105,10 @@ export function EpubViewer({ data, readingMode }: { data: ArrayBuffer; readingMo
       if (cancelled) return
       // Section content hooks run before serialization/srcdoc insertion, so the restrictive
       // CSP and sanitization are present before an iframe can request any resource.
-      book.spine.hooks.content.register((document: Document) => secureEpubDocument(document))
+      book.spine.hooks.content.register((document: Document) => {
+        applyEpubAppearance(document)
+        secureEpubDocument(document)
+      })
       book.spine.hooks.serialize.register((_output: string, section: { output: string }) => {
         section.output = secureEpubSerializedHtml(section.output)
       })
@@ -139,6 +143,7 @@ export function EpubViewer({ data, readingMode }: { data: ArrayBuffer; readingMo
           if (cancelled || request !== supplementRequestRef.current) return
           const document = loaded as Document
           if (!document.documentElement) throw new Error('文書が正しくありません。')
+          applyEpubAppearance(document)
           secureEpubDocument(document)
           const html = secureEpubSerializedHtml(book!.resources.substitute(new XMLSerializer().serializeToString(document), book!.resolve(manifestHref)))
           if (html.length > 1_000_000) throw new Error('文書が大きすぎます。')

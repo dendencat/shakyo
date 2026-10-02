@@ -113,3 +113,10 @@ CodeMirror 6。言語選択(または拡張子から自動判定)でハイライ
 - Windows Store: 予約済みの`shakyo`製品に対応するWindows 11 x64用の未署名MSIXを、保護タグから手動起動のActions workflowで作成する。製品IDは`dendencat.shakyo`、Publisherは`CN=A56B1A7A-89BE-477F-BC7A-5CDF09C69BC8`、PublisherDisplayNameは`dendencat`とする。MSIXはGitHub Releaseへ添付せず、Windows 11実機確認とWindows App Certification Kitを経てPartner Centerへ手動提出する。Store審査後の署名はMicrosoftに任せる。正式な証明書は取得せず、自己署名は必要な実機試験にのみ使う。
 - 検証: 単体テスト、型チェック、lint、ブラウザ操作、Rustの検査、Windows runnerでのMSIX構造検査、独立レビューを通す。Windows 11実機操作とOS資格情報ストアの実環境確認、Store審査は実施結果を明記する。
 - 対象外: 正誤判定・統計・学習進捗保存、追加バックエンド、今回のmacOS公開、WindowsのMSI/EXE直接配布、自己署名パッケージの一般公開。
+
+## v2.3.4 実装・受け入れ条件
+
+- EPUB表示: macOSで画像だけ表示され本文の文字が見えない問題を修正する。本文の可読性を単体テストで検証し、macOS実機での動作確認は実施結果を明記する。
+- GitHub Release: Webアーカイブ、Linuxの`.deb`・`.AppImage`に加え、Windows x64の`.msi`を保護タグから作成する。成果物の来歴とSHA-256を検証して公開する。macOS版の配布は保留する。
+- Windows Store: 提出用MSIXは既存の手動workflowとPartner Centerへの提出手順を維持し、GitHub Releaseには添付しない。
+- 検証: バージョンを`2.3.4`に揃え、単体テスト・ビルド・lint・Release workflowの成果物検査を通す。macOSとWindowsの実機で未確認の操作は検証済みと記載しない。
