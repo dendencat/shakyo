@@ -6,6 +6,7 @@ const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.u
 const suffixes = {
   linux: ['.deb', '.AppImage'],
   windows: ['.msi'],
+  macos: ['.dmg'],
 }[platform]
 
 if (!suffixes) throw new Error('Unknown release platform')
@@ -17,6 +18,7 @@ function visit(dir) {
     const path = join(dir, entry.name)
     if (entry.isDirectory()) visit(path)
     else if (path.includes(`${sep}release${sep}bundle${sep}`) &&
+      (platform !== 'macos' || path.includes(`${sep}universal-apple-darwin${sep}`)) &&
       entry.name.includes(version) && suffixes.some(suffix => entry.name.endsWith(suffix))) assets.push(path)
   }
 }

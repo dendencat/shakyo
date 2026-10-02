@@ -44,3 +44,27 @@ test('collects versioned Windows MSI and requires it to exist', () => {
   assert.equal(existsSync(join(root, 'release-assets', `windows-shakyo_${version}_x64.exe`)), false)
   assert.equal(existsSync(join(root, 'release-assets', 'windows-shakyo_0.0.0_x64.msi')), false)
 })
+
+test('collects only a versioned universal macOS DMG and requires it to exist', () => {
+  const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+  const root = mkdtempSync(join(tmpdir(), 'shakyo-release-assets-'))
+  const target = join(root, 'src-tauri', 'target')
+  const universal = join(target, 'universal-apple-darwin', 'release', 'bundle', 'dmg')
+  const intel = join(target, 'x86_64-apple-darwin', 'release', 'bundle', 'dmg')
+  mkdirSync(universal, { recursive: true })
+  mkdirSync(intel, { recursive: true })
+  const command = [fileURLToPath(new URL('./collect-release-assets.mjs', import.meta.url))]
+  const options = { cwd: root, env: { ...process.env, RELEASE_PLATFORM: 'macos' }, encoding: 'utf8' }
+  writeFileSync(join(universal, 'shakyo_0.0.0_universal.dmg'), 'old')
+  writeFileSync(join(intel, `shakyo_${version}_x64.dmg`), 'intel')
+  const missing = spawnSync(process.execPath, command, options)
+  assert.notEqual(missing.status, 0)
+  assert.match(missing.stderr, /Missing macos \.dmg installer/)
+
+  writeFileSync(join(universal, `shakyo_${version}_universal.dmg`), 'universal')
+  const result = spawnSync(process.execPath, command, options)
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(readFileSync(join(root, 'release-assets', `macos-shakyo_${version}_universal.dmg`), 'utf8'), 'universal')
+  assert.equal(existsSync(join(root, 'release-assets', `macos-shakyo_${version}_x64.dmg`)), false)
+  assert.equal(existsSync(join(root, 'release-assets', 'macos-shakyo_0.0.0_universal.dmg')), false)
+})
