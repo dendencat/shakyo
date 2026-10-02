@@ -7,6 +7,10 @@ export interface ReleaseNote {
 // v1.3.0 cac6604, app-v1.4.0 ae104b3, v2.0.0/app-v2.0.0 3a7b0dc,
 // app-v2.1.0 5408ad3. Duplicate tags are represented by a single version.
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '2.3.4', changes: [
+    'macOSでEPUBの画像は表示される一方、本文の文字が見えない問題を修正しました。',
+    'Windows x64向けMSIをGitHub Releaseから配布します。',
+  ] },
   { version: '2.3.3', changes: [
     'Linux版の配布ファイルを収集する処理を修正しました。',
   ] },

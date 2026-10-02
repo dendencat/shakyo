@@ -1,6 +1,6 @@
 # shakyo — コード写経支援ツール
 
-v2.3.1ではPDF/EPUBの倍率入力、Ctrl+ホイール、スクロールページ送り、階層目次、安全な外部リンク対応と設定項目の説明ツールチップを追加しました。
+v2.3.4ではmacOSでEPUBの画像は見えるのに本文の文字が見えない問題を修正し、Windows向けMSIをGitHub Releaseで配布します。macOSでの実機動作は未確認です。
 
 プログラミングコードの**写経**(お手本のコードをタイピングで書き写す学習法)を支援するWebアプリです。
 
@@ -99,9 +99,9 @@ npm run tauri build
 
 生成されたインストーラは `src-tauri/target/release/bundle/` 以下に出力されます。
 
-**GitHub Release**: mainのpush CIが成功したコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)とLinux(.deb/.AppImage)をビルドします。タグ・main・成功済みCIのコミットと各バージョンが一致し、Artifact AttestationとSHA-256検証が通った場合だけ公開します。CIが失敗または時間切れの場合は公開しません。今回のmacOS版は保留します。
+**GitHub Release**: mainのpush CIが成功したコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)、Linux(.deb/.AppImage)、Windows x64(.msi)をビルドします。タグ・main・成功済みCIのコミットと各バージョンが一致し、Artifact AttestationとSHA-256検証が通った場合だけ公開します。CIが失敗または時間切れの場合は公開しません。macOS版の配布は引き続き保留します。
 
-**Windows Store**: Windows 11 x64版はMSI/EXEを直接配布せず、予約済みの`shakyo`製品へMSIXを手動提出します。[Store MSIX workflow](.github/workflows/store-msix.yml)をタグ指定で起動し、Actions artifactから提出用の未署名MSIXを取得します。Partner Centerの製品IDは`dendencat.shakyo`、Publisherは`CN=A56B1A7A-89BE-477F-BC7A-5CDF09C69BC8`、PublisherDisplayNameは`dendencat`です。Windows 11実機で起動・WebView2・APIキー保存を確認し、Windows App Certification Kitで検証してからPartner Centerへアップロードします。Store提出用MSIXはMicrosoftが審査後に署名するため、Windowsのコード署名証明書は取得しません。自己署名を使う場合は私的な実機試験に限り、秘密鍵をリポジトリや公開物に含めません。Store審査が終わるまでMSIXをGitHub Releaseから直接配布しません。
+**Windows Store**: GitHub Releaseで配布するMSIとは別に、予約済みの`shakyo`製品へWindows 11 x64用MSIXを手動提出します。[Store MSIX workflow](.github/workflows/store-msix.yml)をタグ指定で起動し、Actions artifactから提出用の未署名MSIXを取得します。Partner Centerの製品IDは`dendencat.shakyo`、Publisherは`CN=A56B1A7A-89BE-477F-BC7A-5CDF09C69BC8`、PublisherDisplayNameは`dendencat`です。Windows 11実機で起動・WebView2・APIキー保存を確認し、Windows App Certification Kitで検証してからPartner Centerへアップロードします。Store提出用MSIXはMicrosoftが審査後に署名するため、Windowsのコード署名証明書は取得しません。自己署名を使う場合は私的な実機試験に限り、秘密鍵をリポジトリや公開物に含めません。Store審査が終わるまでMSIXをGitHub Releaseから直接配布しません。
 
 PRではlint、Vitest、build、`cargo check --locked`、ChromiumのPlaywrightスモークテストと依存関係レビューを実行します。Playwright失敗時はスクリーンショット・trace・レポートをActions artifactに保存します。公開物のハッシュはReleaseの`SHA256SUMS.txt`で確認でき、`gh attestation verify <file> --repo dendencat/shakyo`で出所を検証できます。
 
