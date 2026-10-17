@@ -120,3 +120,11 @@ CodeMirror 6。言語選択(または拡張子から自動判定)でハイライ
 - GitHub Release: Webアーカイブ、Linuxの`.deb`・`.AppImage`、Windows x64の`.msi`、Apple Silicon・Intel両対応のmacOSユニバーサル`.dmg`を保護タグから作成する。DMGを含む必須成果物の来歴とSHA-256を検証して公開する。DMGはコード署名・Appleの公証を行わず、Gatekeeperの警告・ブロックの可能性を案内する。
 - Windows Store: 提出用MSIXは既存の手動workflowとPartner Centerへの提出手順を維持し、GitHub Releaseには添付しない。
 - 検証: バージョンを`2.3.4`に揃え、単体テスト・ビルド・lint・Release workflowの成果物検査を通す。macOSとWindowsの実機で未確認の操作は検証済みと記載しない。
+
+## v2.3.5 実装・受け入れ条件
+
+- macOS配布: v2.3.4のユニバーサルDMG作成で欠落したアプリ全体の署名を復元する。Tauriのアドホック署名をDMG作成前に適用する。AppleのDeveloper ID署名・公証は追加しない。
+- 公開前検証: 完成したDMGを読み取り専用でマウントし、コンテナの整合性、アプリ識別子・バージョン、arm64・x86_64と全アーキテクチャの厳密な署名を検証する。マウントは成功・失敗時とも取り出し、検証失敗時は成果物の収集・公開を停止する。
+- 案内: Gatekeeperの警告がなくなるとは案内せず、必要に応じた「プライバシーとセキュリティ」の「このまま開く」を説明する。アプリ起動・画面操作の実機未確認は明記する。
+- 検証: バージョンを`2.3.5`に揃え、単体テスト・ビルド・lint・スクリプト構文確認を通す。元のv2.3.4 DMGの拒否とアドホック署名修復済みDMGの受理を確認する。
+- 対象外: Windows・Linux・Webのビルド動作変更、機能追加、証明書・Apple Developer登録、公証基盤、Gatekeeper無効化・隔離属性削除。
