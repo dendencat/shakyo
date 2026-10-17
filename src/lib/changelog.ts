@@ -7,6 +7,11 @@ export interface ReleaseNote {
 // v1.3.0 cac6604, app-v1.4.0 ae104b3, v2.0.0/app-v2.0.0 3a7b0dc,
 // app-v2.1.0 5408ad3. Duplicate tags are represented by a single version.
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '2.3.5', changes: [
+    'v2.3.4のmacOSユニバーサルDMG作成時にアプリ全体の署名が欠落していた問題を修正しました。',
+    'アプリ全体をアドホック署名し、配布するDMG内の両アーキテクチャの署名を検証します。',
+    'AppleのDeveloper ID署名・公証はありません。初回起動時は「プライバシーとセキュリティ」の「このまま開く」が必要な場合があります。',
+  ] },
   { version: '2.3.4', changes: [
     'macOSでEPUBの画像は表示される一方、本文の文字が見えない問題を修正しました。',
     'Windows x64向けMSIをGitHub Releaseから配布します。',

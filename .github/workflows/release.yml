@@ -204,7 +204,19 @@ jobs:
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - run: npm ci
       - name: Build universal macOS DMG
+        env:
+          # Full app-bundle ad-hoc signing before Tauri creates the DMG.
+          APPLE_SIGNING_IDENTITY: '-'
         run: npm run tauri -- build --target universal-apple-darwin --bundles dmg
+      - name: Verify packaged macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=(src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          [[ ${#images[@]} -eq 1 ]] || { echo '::error::Expected exactly one macOS DMG'; exit 1; }
+          version=$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")
+          bash scripts/verify-macos-dmg.sh "${images[0]}" "$version"
       - name: Collect release assets
         env:
           RELEASE_PLATFORM: macos
