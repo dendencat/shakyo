@@ -7,6 +7,10 @@ export interface ReleaseNote {
 // v1.3.0 cac6604, app-v1.4.0 ae104b3, v2.0.0/app-v2.0.0 3a7b0dc,
 // app-v2.1.0 5408ad3. Duplicate tags are represented by a single version.
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '2.3.6', changes: [
+    '開発・ビルド・CIで使用するNode.jsを、2026年10月21日公開のセキュリティ修正版22.23.4に固定しました。',
+    '依存関係のインストール時に、安全なNode.jsのバージョン範囲を検査します。',
+  ] },
   { version: '2.3.5', changes: [
     'v2.3.4のmacOSユニバーサルDMG作成時にアプリ全体の署名が欠落していた問題を修正しました。',
     'アプリ全体をアドホック署名し、配布するDMG内の両アーキテクチャの署名を検証します。',
