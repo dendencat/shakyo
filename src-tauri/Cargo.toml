@@ -1,6 +1,6 @@
 [package]
 name = "shakyo"
-version = "2.3.6"
+version = "2.3.7"
 description = "コード写経支援ツール"
 edition = "2021"
 
