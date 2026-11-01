@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import type { ReactCodeMirrorRef, ViewUpdate } from '@uiw/react-codemirror'
 import { LANGUAGE_OPTIONS, languageExtension } from '../lib/langs'
@@ -9,6 +10,12 @@ import { accuracyPercent, progressPercent, wordsPerMinute } from '../lib/stats'
 import { loadProgress, saveProgress } from '../lib/progress'
 import { diffAgainstReference, normalizeReference } from '../lib/diff'
 import { SaveLoadDialog } from './SaveLoadDialog'
+import { saveSnapshot, type Snapshot } from '../lib/snapshots'
+import { extensionRevision } from '../extensions/editorAdapter'
+import { loadPreferences, savePreferences, usePreferences, type Preferences } from '../lib/preferences'
+import { editorShortcutExtensions, useShortcuts } from '../lib/shortcuts'
+import { editorPreferenceExtensions } from '../lib/editorPreferences'
+import { PaneTitle } from './PaneTitle'
 
 function initialLang(): LangId {
   const saved = localStorage.getItem(KEY_EDITOR_LANG)
@@ -16,21 +23,51 @@ function initialLang(): LangId {
   return 'ts'
 }
 
+const EDITOR_BASIC_SETUP = { lineNumbers: true, foldGutter: false, indentOnInput: false }
+
+export type ShakyoEditorCommands = {
+  clear: () => void
+  newPage: () => void
+  save: () => void
+  saveAs: () => void
+}
+
 export function ShakyoEditor({
   editorRef,
+  sidebarTarget,
+  onOpenFiles,
   referenceText,
   referenceName,
   resolvedTheme,
+  onExtensionChange,
+  onLanguageChange,
+  allowReferenceRestore = true,
+  commandsRef,
+  onNotify,
 }: {
+  sidebarTarget?: HTMLElement | null
+  onOpenFiles?: () => void
   editorRef: React.RefObject<ReactCodeMirrorRef | null>
   referenceText: string | null
   referenceName: string | null
   resolvedTheme: 'light' | 'dark'
+  onExtensionChange?: (revision: number) => void
+  onLanguageChange?: (language: string) => void
+  allowReferenceRestore?: boolean
+  commandsRef?: React.Ref<ShakyoEditorCommands>
+  onNotify?: (text: string, kind: 'success' | 'error') => void
 }) {
+  const { editorMode, indentStyle, indentWidth, autoIndent, fontSize } = usePreferences()
+  const shortcuts = useShortcuts()
+  const [preferenceError, setPreferenceError] = useState('')
   const [code, setCode] = useState(() => localStorage.getItem(KEY_DRAFT) ?? '')
   const [lang, setLang] = useState<LangId>(initialLang)
   const [checkEnabled, setCheckEnabled] = useState(false)
   const [saveLoadOpen, setSaveLoadOpen] = useState(false)
+  const [saveAsSignal, setSaveAsSignal] = useState(0)
+  const [currentSnapshot, setCurrentSnapshot] = useState<Pick<Snapshot, 'id' | 'name'> | null>(null)
+  const [savedPage, setSavedPage] = useState<Pick<Snapshot, 'code' | 'lang'> | null>(null)
+  const [pageId, setPageId] = useState(0)
   const [accuracy, setAccuracy] = useState<number | null>(null)
   const [, setTick] = useState(0)
   const saveTimer = useRef<number | undefined>(undefined)
@@ -40,9 +77,14 @@ export function ShakyoEditor({
 
   useEffect(() => {
     localStorage.setItem(KEY_EDITOR_LANG, lang)
-  }, [lang])
+    onLanguageChange?.(lang)
+  }, [lang, onLanguageChange])
 
-  const extensions = useMemo(() => [...languageExtension(lang), diffHighlight], [lang])
+  const extensions = useMemo(() => [
+    ...languageExtension(lang), diffHighlight, extensionRevision,
+    ...editorPreferenceExtensions({ editorMode, indentStyle, indentWidth, autoIndent, fontSize }),
+    editorShortcutExtensions(shortcuts, editorMode),
+  ], [lang, editorMode, indentStyle, indentWidth, autoIndent, fontSize, shortcuts])
 
   const normalizedReferenceLength = useMemo(
     () => (referenceText != null ? normalizeReference(referenceText).length : null),
@@ -84,7 +126,7 @@ export function ShakyoEditor({
     const prevName = prevReferenceNameRef.current
     prevReferenceNameRef.current = referenceName
 
-    if (referenceName == null || referenceName === prevName) return
+    if (!allowReferenceRestore || referenceName == null || referenceName === prevName) return
 
     const entry = loadProgress(referenceName)
     if (entry == null) return
@@ -113,10 +155,12 @@ export function ShakyoEditor({
     ) {
       restore()
     }
-  }, [referenceName, code, checkEnabled, referenceText])
+  }, [referenceName, code, checkEnabled, referenceText, allowReferenceRestore])
 
-  const onChange = (value: string, viewUpdate: ViewUpdate) => {
+  const onChangeRef = useRef<(value: string, viewUpdate: ViewUpdate) => void>(() => {})
+  onChangeRef.current = (value: string, viewUpdate: ViewUpdate) => {
     setCode(value)
+    onExtensionChange?.(viewUpdate.state.field(extensionRevision))
 
     const result = getDiffResult(viewUpdate.state)
     const acc = result != null ? accuracyPercent(result, value.length) : null
@@ -125,7 +169,7 @@ export function ShakyoEditor({
     window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => {
       localStorage.setItem(KEY_DRAFT, value)
-      if (referenceName && value.length > 0) {
+      if (allowReferenceRestore && referenceName && value.length > 0) {
         const progressPct =
           normalizedReferenceLength != null
             ? progressPercent(value.length, normalizedReferenceLength)
@@ -146,6 +190,9 @@ export function ShakyoEditor({
       startTicking()
     }
   }
+  // The CodeMirror wrapper reconfigures every extension when onChange changes identity.
+  // Keep the handler stable so timer-driven React renders cannot close the search panel.
+  const handleEditorChange = useCallback((value: string, update: ViewUpdate) => onChangeRef.current(value, update), [])
 
   const clear = () => {
     if (code && !window.confirm('写経した内容をすべて消去します。よろしいですか?')) return
@@ -155,6 +202,42 @@ export function ShakyoEditor({
     resetSession()
   }
 
+  const saveAs = () => {
+    if (onOpenFiles) onOpenFiles()
+    else setSaveLoadOpen(true)
+    setSaveAsSignal(value => value + 1)
+  }
+
+  const overwrite = () => {
+    if (!currentSnapshot) {
+      saveAs()
+      return
+    }
+    try {
+      const snapshot = saveSnapshot(currentSnapshot.name, lang, code, currentSnapshot.id)
+      setCurrentSnapshot({ id: snapshot.id, name: snapshot.name })
+      setSavedPage({ code: snapshot.code, lang: snapshot.lang })
+      onNotify?.(`「${snapshot.name}」を上書き保存しました`, 'success')
+    } catch (error) {
+      onNotify?.(error instanceof Error ? error.message : '上書き保存に失敗しました', 'error')
+    }
+  }
+
+  const newPage = () => {
+    const hasUnsavedWork = code.length > 0 && (!savedPage || savedPage.code !== code || savedPage.lang !== lang)
+    if (hasUnsavedWork && !window.confirm('現在の写経内容を破棄して新規ページを開きますか?')) return
+    window.clearTimeout(saveTimer.current)
+    setCode('')
+    localStorage.setItem(KEY_DRAFT, '')
+    setCurrentSnapshot(null)
+    setSavedPage(null)
+    setAccuracy(null)
+    resetSession()
+    setPageId(id => id + 1)
+  }
+
+  useImperativeHandle(commandsRef, () => ({ clear, newPage, save: overwrite, saveAs }))
+
   const progress =
     normalizedReferenceLength != null ? progressPercent(code.length, normalizedReferenceLength) : null
   const wpm =
@@ -162,11 +245,38 @@ export function ShakyoEditor({
       ? wordsPerMinute(code.length, Date.now() - sessionStartRef.current)
       : null
 
+  const saveMenu = <SaveLoadDialog
+          embedded={!!sidebarTarget}
+          code={code}
+          lang={lang}
+          focusNameSignal={saveAsSignal}
+          onSaved={snapshot => {
+            setCurrentSnapshot({ id: snapshot.id, name: snapshot.name })
+            setSavedPage({ code: snapshot.code, lang: snapshot.lang })
+            onNotify?.(`「${snapshot.name}」を保存しました`, 'success')
+          }}
+          onLoad={(snapshot) => {
+            window.clearTimeout(saveTimer.current)
+            setCode(snapshot.code)
+            localStorage.setItem(KEY_DRAFT, snapshot.code)
+            setLang(snapshot.lang)
+            const loadedAccuracy =
+              checkEnabled && referenceText != null
+                ? accuracyPercent(diffAgainstReference(snapshot.code, referenceText), snapshot.code.length)
+                : null
+            setAccuracy(loadedAccuracy)
+            setCurrentSnapshot({ id: snapshot.id, name: snapshot.name })
+            setSavedPage({ code: snapshot.code, lang: snapshot.lang })
+            resetSession()
+          }}
+          onClose={() => setSaveLoadOpen(false)}
+        />
+
   return (
     <>
       <section className="pane editor-pane">
         <div className="pane-header">
-          <h2>写経エディタ</h2>
+          <PaneTitle icon="editor" label="写経エディタ" />
           <div className="toolbar">
             <label>
               言語:{' '}
@@ -178,6 +288,10 @@ export function ShakyoEditor({
                 ))}
               </select>
             </label>
+            <label>インデント幅: <select value={indentWidth} onChange={event => {
+              try { savePreferences({ ...loadPreferences(), indentWidth: Number(event.target.value) as Preferences['indentWidth'] }); setPreferenceError('') }
+              catch { setPreferenceError('インデント幅を保存できませんでした。') }
+            }}>{[2, 4, 8].map(width => <option key={width} value={width}>{width}</option>)}</select></label>
             <label
               className="check-label"
               title={referenceText == null ? 'お手本のテキストファイルを開くと使えます' : undefined}
@@ -190,47 +304,34 @@ export function ShakyoEditor({
               />
               正誤判定
             </label>
-            <button onClick={() => setSaveLoadOpen(true)}>保存/読込…</button>
+            <button onClick={() => onOpenFiles ? onOpenFiles() : setSaveLoadOpen(true)}>保存/読込…</button>
             <button onClick={clear}>クリア</button>
           </div>
         </div>
-        <div className="pane-body editor-body">
+        <div className="pane-body editor-body" onKeyDownCapture={(event) => {
+          // Let the IME consume its own keys before any modal keymap sees them.
+          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) event.stopPropagation()
+        }}>
           <CodeMirror
+            key={pageId}
             ref={editorRef}
             value={code}
-            onChange={onChange}
+            onChange={handleEditorChange}
             theme={resolvedTheme}
             extensions={extensions}
-            basicSetup={{ lineNumbers: true, foldGutter: false }}
+            basicSetup={EDITOR_BASIC_SETUP}
             placeholder="ここにお手本のコードを書き写していきます…"
             className="shakyo-code"
           />
         </div>
+        {preferenceError && <p role="alert">{preferenceError}</p>}
         <div className="status-bar">
           <span>WPM: {wpm ?? '—'}</span>
           <span>正確率: {accuracy != null ? `${accuracy}%` : '—'}</span>
           <span>進捗: {progress != null ? `${progress}%` : '—'}</span>
         </div>
       </section>
-      {saveLoadOpen && (
-        <SaveLoadDialog
-          code={code}
-          lang={lang}
-          onLoad={(snapshot) => {
-            window.clearTimeout(saveTimer.current)
-            setCode(snapshot.code)
-            localStorage.setItem(KEY_DRAFT, snapshot.code)
-            setLang(snapshot.lang)
-            const loadedAccuracy =
-              checkEnabled && referenceText != null
-                ? accuracyPercent(diffAgainstReference(snapshot.code, referenceText), snapshot.code.length)
-                : null
-            setAccuracy(loadedAccuracy)
-            resetSession()
-          }}
-          onClose={() => setSaveLoadOpen(false)}
-        />
-      )}
+      {sidebarTarget ? createPortal(saveMenu, sidebarTarget) : saveLoadOpen && saveMenu}
     </>
   )
 }

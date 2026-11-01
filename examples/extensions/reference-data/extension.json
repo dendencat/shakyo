@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "apiVersion": 1,
+  "id": "example.reference-data",
+  "name": "お手本データ（サンプル）",
+  "version": "1.0.0",
+  "entry": "main.js",
+  "permissions": { "editor": [], "reference": ["write"], "network": [] },
+  "contributes": { "commands": [{ "id": "example.reference-data.open", "title": "同梱のお手本を開く" }], "settings": {} }
+}

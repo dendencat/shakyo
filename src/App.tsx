@@ -1,28 +1,119 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactCodeMirrorRef } from '@uiw/react-codemirror'
-import { SplitPane } from './components/SplitPane'
+import { WorkspaceLayout } from './components/WorkspaceLayout'
+import { LayoutDialog } from './components/LayoutDialog'
 import { ReferencePane } from './components/ReferencePane'
-import { ShakyoEditor } from './components/ShakyoEditor'
+import { ShakyoEditor, type ShakyoEditorCommands } from './components/ShakyoEditor'
 import { ExplainPanel } from './components/ExplainPanel'
 import { SettingsDialog } from './components/SettingsDialog'
-import { loadThemePref, nextThemePref, resolveTheme, saveThemePref } from './lib/theme'
+import { loadThemePref, resolveTheme, saveThemePref } from './lib/theme'
 import type { ThemePref } from './lib/theme'
+import { loadLayout, restorePaneLayout, saveLayout } from './lib/layout'
+import type { LayoutConfig } from './lib/layout'
+import { ExtensionManager } from './extensions/manager'
+import type { Json } from './extensions/api'
+import type { ReferencePort } from './extensions/referenceAdapter'
+import { applyEditorEdits, editorSnapshot } from './extensions/editorAdapter'
+import { ExtensionDialog } from './components/ExtensionDialog'
+import { ExtensionPrompt, type ExtensionPromptRequest } from './components/ExtensionPrompt'
+import { IconButton } from './components/Icon'
+import { HelpPanel } from './components/HelpPanel'
+import { ThemeMenu } from './components/ThemeMenu'
+import { ShortcutDialog } from './components/ShortcutPanel'
+import { matchesShortcut, matchesShortcutMenu, useShortcuts } from './lib/shortcuts'
+import { loadPreferences, savePreferences, usePreferences } from './lib/preferences'
 import './App.css'
 
-const THEME_LABELS: Record<ThemePref, string> = {
-  light: 'テーマ: ライト',
-  dark: 'テーマ: ダーク',
-  system: 'テーマ: システム',
-}
-
 export default function App() {
+  const preferences = usePreferences()
+  const shortcuts = useShortcuts()
+  const [themeOpen, setThemeOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const shortcutReturnFocus = useRef<HTMLElement | null>(null)
+  const noticeSequence = useRef(0)
+  const [notice, setNotice] = useState<{ text: string; kind: 'success' | 'error'; id: number } | null>(null)
+  const notify = useCallback((text: string, kind: 'success' | 'error' = 'success') => setNotice({ text, kind, id: ++noticeSequence.current }), [])
+  const openShortcuts = useCallback(() => {
+    shortcutReturnFocus.current = document.activeElement as HTMLElement | null
+    setShortcutsOpen(true)
+  }, [])
+  const closeShortcuts = useCallback(() => {
+    setShortcutsOpen(false)
+    shortcutReturnFocus.current?.focus()
+  }, [])
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), 4000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+  const closePane = (id: 'reference' | 'explain') => {
+    try {
+      const current = loadPreferences()
+      savePreferences({ ...current, visiblePanes: { ...current.visiblePanes, [id]: false } })
+      document.querySelector<HTMLButtonElement>('.activity-bar button[aria-label="設定"]')?.focus()
+      notify('設定から再表示できます', 'success')
+    } catch { notify('表示設定を保存できませんでした', 'error') }
+  }
   const editorRef = useRef<ReactCodeMirrorRef>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [reference, setReference] = useState<{ name: string; text: string } | null>(null)
+  const editorCommands = useRef<ShakyoEditorCommands>(null)
+  const referenceCommands = useRef<{ openFilePicker: () => void }>(null)
+  const explainCommands = useRef<{ focusExplain: () => void }>(null)
+  const [extensionManager] = useState(() => new ExtensionManager())
+  const referencePort = useRef<ReferencePort>(null)
+  const editorLanguage = useRef('ts')
+  const [sidebar, setSidebar] = useState<'files' | 'extensions' | 'settings' | 'layout' | 'help' | null>(null)
+  const [fileTarget, setFileTarget] = useState<HTMLDivElement | null>(null)
+  const [saveTarget, setSaveTarget] = useState<HTMLDivElement | null>(null)
+  const closeSidebar = () => {
+    document.querySelector<HTMLButtonElement>('.activity-bar [aria-expanded="true"]')?.focus()
+    setSidebar(null)
+  }
+  const [extensionError, setExtensionError] = useState('')
+  const [extensionPrompt, setExtensionPrompt] = useState<ExtensionPromptRequest | null>(null)
+  const promptRef = useRef<ExtensionPromptRequest | null>(null)
+  const promptSequence = useRef(0)
+  const [layout, setLayout] = useState(loadLayout)
+  const [layoutError, setLayoutError] = useState<string | null>(null)
+  const [reference, setReference] = useState<{ name: string; text: string; fromExtension?: boolean } | null>(null)
   const [themePref, setThemePref] = useState<ThemePref>(loadThemePref)
   const [systemPrefersDark, setSystemPrefersDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches,
   )
+
+  useEffect(() => {
+    extensionManager.setHost({
+      getEditor: () => {
+        if (!editorRef.current?.view) throw new Error('エディタが利用できません。')
+        return editorSnapshot(editorRef.current.view, editorLanguage.current)
+      },
+      applyEdits: input => {
+        if (!editorRef.current?.view) throw new Error('エディタが利用できません。')
+        applyEditorEdits(editorRef.current.view, input)
+      },
+      getReference: () => referencePort.current?.getCurrent() ?? null,
+      openText: input => { if (!referencePort.current) throw new Error('お手本が利用できません。'); referencePort.current.openText(input) },
+      openUrl: url => { if (!referencePort.current) throw new Error('お手本が利用できません。'); referencePort.current.openUrl(url) },
+      ui: (owner, kind, message, options, signal) => new Promise<Json>((resolve, reject) => {
+        if (promptRef.current || signal.aborted) { reject(new Error('別の確認画面が開いているか、拡張が停止しています。')); return }
+        const id = ++promptSequence.current
+        const finish = (value: Json) => {
+          signal.removeEventListener('abort', abort)
+          if (promptRef.current?.id !== id) return
+          promptRef.current = null; setExtensionPrompt(null); resolve(value)
+        }
+        const abort = () => finish(null)
+        const request = { id, owner, kind, message, options, finish }
+        promptRef.current = request
+        signal.addEventListener('abort', abort, { once: true })
+        setExtensionPrompt(request)
+      }),
+    })
+    void extensionManager.load().catch(() => setExtensionError('拡張の保存領域を開けませんでした。'))
+    return () => { extensionManager.dispose(); promptRef.current?.finish(null) }
+  }, [extensionManager])
+  const onExtensionEditorChange = useCallback((revision: number) => extensionManager.emit('editor', { revision }), [extensionManager])
+  const onExtensionReferenceChange = useCallback(() => extensionManager.emit('reference'), [extensionManager])
+  const onEditorLanguageChange = useCallback((language: string) => { editorLanguage.current = language }, [])
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -37,11 +128,11 @@ export default function App() {
     document.documentElement.dataset.theme = resolved
   }, [resolved])
 
-  const toggleTheme = () => {
-    const next = nextThemePref(themePref)
+  const chooseTheme = (next: ThemePref) => {
     setThemePref(next)
     saveThemePref(next)
   }
+  const toggleSidebar = (next: NonNullable<typeof sidebar>) => setSidebar(current => current === next ? null : next)
 
   const getCode = useCallback(() => {
     const view = editorRef.current?.view
@@ -53,40 +144,131 @@ export default function App() {
     return { code: view.state.doc.toString(), isSelection: false }
   }, [])
 
+  const changeLayout = useCallback((next: LayoutConfig, persist: boolean) => {
+    setLayout(next)
+    if (!persist) return
+    try {
+      saveLayout(next)
+      setLayoutError(null)
+    } catch {
+      setLayoutError('レイアウトを保存できませんでした。現在の配置は使えますが、次回起動時に復元できない場合があります。')
+      notify('レイアウトを保存できませんでした', 'error')
+    }
+  }, [notify])
+
+  const revealPane = useCallback((id: 'reference' | 'explain') => {
+    try {
+      const current = loadPreferences()
+      if (!current.visiblePanes[id]) {
+        savePreferences({ ...current, visiblePanes: { ...current.visiblePanes, [id]: true } })
+      }
+      setLayout(previous => {
+        const next = restorePaneLayout(previous, id)
+        if (next !== previous) saveLayout(next)
+        return next
+      })
+      setLayoutError(null)
+    } catch {
+      notify('ペインの表示設定を保存できませんでした', 'error')
+    }
+  }, [notify])
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (shortcutsOpen || extensionPrompt || event.isComposing || event.keyCode === 229) return
+      if (matchesShortcutMenu(event)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        openShortcuts()
+        return
+      }
+      const target = event.target
+      if ((target instanceof Element && target.closest('[aria-modal="true"]')) || target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return
+
+      let run: (() => void) | undefined
+      if (matchesShortcut(event, shortcuts.clear)) run = () => editorCommands.current?.clear()
+      else if (matchesShortcut(event, shortcuts.newPage)) run = () => editorCommands.current?.newPage()
+      else if (matchesShortcut(event, shortcuts.save)) run = () => editorCommands.current?.save()
+      else if (matchesShortcut(event, shortcuts.saveAs)) run = () => editorCommands.current?.saveAs()
+      else if (matchesShortcut(event, shortcuts.openReference)) run = () => {
+        revealPane('reference')
+        requestAnimationFrame(() => referenceCommands.current?.openFilePicker())
+      }
+      else if (matchesShortcut(event, shortcuts.openExplain)) run = () => {
+        revealPane('explain')
+        requestAnimationFrame(() => explainCommands.current?.focusExplain())
+      }
+      if (!run) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      run()
+    }
+    window.addEventListener('keydown', handleShortcut, true)
+    return () => window.removeEventListener('keydown', handleShortcut, true)
+  }, [shortcutsOpen, extensionPrompt, openShortcuts, revealPane, shortcuts])
+
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>shakyo</h1>
-        <span className="subtitle">コード写経支援ツール</span>
-        <button className="theme-toggle-button" onClick={toggleTheme}>
-          {THEME_LABELS[themePref]}
-        </button>
-        <button className="settings-button" onClick={() => setSettingsOpen(true)}>
-          設定
-        </button>
-      </header>
+      <div className="workbench">
+      <nav className="activity-bar" aria-label="機能">
+        {(['files', 'extensions', 'layout', 'shortcuts', 'help'] as const).map(id => {
+          const label = { files: 'ファイル', extensions: '拡張機能', layout: 'レイアウト', settings: '設定', shortcuts: 'ショートカット', help: 'ヘルプ' }[id]
+          return <IconButton key={id} icon={id} label={label}
+            aria-expanded={id === 'shortcuts' ? shortcutsOpen : sidebar === id} aria-controls={id === 'shortcuts' ? 'shortcut-dialog' : `sidebar-${id}`} onClick={() => id === 'shortcuts' ? openShortcuts() : toggleSidebar(id)} />
+        })}
+        <ThemeMenu value={themePref} resolved={resolved} onChange={chooseTheme} onOpenChange={setThemeOpen} />
+        <IconButton icon="settings" label="設定" aria-expanded={sidebar === 'settings'} aria-controls="sidebar-settings" onClick={() => toggleSidebar('settings')} />
+      </nav>
+      <aside className="app-sidebar" hidden={!sidebar} aria-label="機能サイドバー" onKeyDown={e => {
+        if (e.key === 'Escape' && !e.nativeEvent.isComposing) { e.stopPropagation(); closeSidebar() }
+      }}>
+        <div className="sidebar-heading"><span>{sidebar ? { files: 'ファイル', extensions: '拡張機能', layout: 'レイアウト', shortcuts: 'ショートカット', settings: '設定', help: 'ヘルプ' }[sidebar] : ''}</span><IconButton icon="close" label="サイドバーを閉じる" onClick={closeSidebar} /></div>
+        <div id="sidebar-files" hidden={sidebar !== 'files'}><div ref={setFileTarget} /><div ref={setSaveTarget} /></div>
+        <div id="sidebar-extensions" hidden={sidebar !== 'extensions'}>{sidebar === 'extensions' && <ExtensionDialog embedded manager={extensionManager} onClose={closeSidebar} onRun={(id, command) => {
+          setExtensionError('')
+          void extensionManager.run(id, command).catch(e => setExtensionError(e instanceof Error ? e.message : '拡張の実行に失敗しました。'))
+        }} />}</div>
+        <div id="sidebar-settings" hidden={sidebar !== 'settings'}>{sidebar === 'settings' && <SettingsDialog embedded onClose={closeSidebar} onSaved={() => notify('設定を保存しました', 'success')} onError={message => notify(message, 'error')} />}</div>
+        <div id="sidebar-layout" hidden={sidebar !== 'layout'}>{sidebar === 'layout' && <LayoutDialog embedded layout={layout} onApply={next => changeLayout(next, true)} onClose={closeSidebar} />}</div>
+        <div id="sidebar-help" hidden={sidebar !== 'help'}>{sidebar === 'help' && <HelpPanel />}</div>
+      </aside>
+      <div className="workspace-content">
+      {layoutError && <p className="error-text" role="status">{layoutError}</p>}
+      {extensionError && <p className="error-text" role="status">{extensionError}<button onClick={() => setExtensionError('')}>閉じる</button></p>}
       <main className="app-main">
-        <SplitPane
-          storageKey="shakyo.split.main"
-          left={<ReferencePane onReferenceChange={setReference} resolvedTheme={resolved} />}
-          right={
-            <SplitPane
-              direction="vertical"
-              storageKey="shakyo.split.right"
-              left={
-                <ShakyoEditor
-                  editorRef={editorRef}
-                  referenceText={reference?.text ?? null}
-                  referenceName={reference?.name ?? null}
-                  resolvedTheme={resolved}
-                />
-              }
-              right={<ExplainPanel getCode={getCode} onOpenSettings={() => setSettingsOpen(true)} />}
-            />
-          }
+        <WorkspaceLayout
+          layout={layout}
+          visiblePanes={preferences.visiblePanes}
+          onChange={changeLayout}
+          panes={{
+            reference: <ReferencePane commandsRef={referenceCommands} onEnsureVisible={() => revealPane('reference')} onReferenceChange={setReference} resolvedTheme={resolved} obscured={!!extensionPrompt || shortcutsOpen || themeOpen || !preferences.visiblePanes.reference} sidebarTarget={fileTarget} extensionPort={referencePort} onExtensionChange={onExtensionReferenceChange} onClose={() => closePane('reference')} />,
+            editor: (
+              <ShakyoEditor
+                sidebarTarget={saveTarget}
+                onOpenFiles={() => setSidebar("files")}
+                editorRef={editorRef}
+                referenceText={reference?.text ?? null}
+                referenceName={reference?.name ?? null}
+                resolvedTheme={resolved}
+                onExtensionChange={onExtensionEditorChange}
+                onLanguageChange={onEditorLanguageChange}
+                allowReferenceRestore={!reference?.fromExtension}
+                onNotify={notify}
+                commandsRef={editorCommands}
+              />
+            ),
+            explain: <ExplainPanel commandsRef={explainCommands} getCode={getCode} onOpenSettings={() => setSidebar("settings")} onClose={() => closePane('explain')} />,
+          }}
         />
       </main>
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      </div>
+      </div>
+      {extensionPrompt && <ExtensionPrompt key={extensionPrompt.id} request={extensionPrompt} />}
+      {shortcutsOpen && <ShortcutDialog onClose={closeShortcuts} onSaved={() => notify('ショートカットを保存しました', 'success')} onError={message => notify(message, 'error')} />}
+      <div className="snackbar-region" aria-atomic="true">
+        {notice && <div className={`snackbar snackbar-${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} aria-live={notice.kind === 'error' ? 'assertive' : 'polite'} key={notice.id}>{notice.text}</div>}
+      </div>
     </div>
   )
 }

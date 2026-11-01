@@ -1,0 +1,268 @@
+.pdf-viewer,
+.epub-viewer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.reader-toolbar {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(5px);
+}
+
+.reader-toolbar button {
+  min-width: 32px;
+}
+
+.reader-zoom-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-zoom-input input {
+  box-sizing: border-box;
+  width: 58px;
+  padding: 4px 3px;
+  text-align: end;
+}
+
+.reader-toolbar .reader-zoom-reset {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 5px;
+}
+
+.reader-toolbar output {
+  color: var(--text-sub);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-toolbar select {
+  min-width: 100px;
+  max-width: min(260px, 45%);
+}
+
+.pdf-pages {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+}
+
+.pdf-viewer .pdf-page-slot,
+.pdf-viewer .pdf-page {
+  max-width: none;
+}
+
+.pdf-page-wrapper {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+}
+
+.pdf-internal-link {
+  position: absolute;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pdf-internal-link:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.reader-paginated .pdf-pages {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+}
+
+.epub-viewer {
+  height: 100%;
+  min-height: 240px;
+}
+
+.epub-rendition {
+  flex: 1;
+  min-height: 180px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.epub-rendition > div {
+  height: 100%;
+}
+
+.epub-supplement {
+  position: absolute;
+  z-index: 7;
+  inset: 45px 0 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.epub-supplement-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.epub-supplement iframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+}
+
+.reader-edge {
+  position: absolute;
+  z-index: 6;
+  top: 50%;
+  width: 44px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 28px;
+  transform: translateY(-50%);
+}
+
+.reader-edge-icon {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.reader-edge-previous {
+  left: 8px;
+}
+
+.reader-edge-next {
+  right: 8px;
+}
+
+.reader-toc-toggle {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 5px;
+}
+
+.reader-toc-drawer {
+  position: absolute;
+  z-index: 8;
+  top: 45px;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  width: min(320px, 80%);
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.reader-toc-heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reader-toc-drawer nav {
+  overflow: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+.reader-toc-item {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  padding-block: 7px;
+  padding-inline-end: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-h);
+  text-align: start;
+}
+
+button.reader-toc-item:hover,
+button.reader-toc-item:focus-visible {
+  background: var(--accent-bg);
+}
+
+.reader-toc-group {
+  color: var(--text-sub);
+  font-weight: 600;
+}
+
+.reference-reading-mode {
+  position: relative;
+}
+
+.reference-reading-mode .reader-toolbar,
+.reference-reading-mode .reader-edge {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.reference-reading-mode .reader-toolbar {
+  transform: translateY(-6px);
+}
+
+.reference-reading-mode.reader-controls-visible .reader-toolbar,
+.reference-reading-mode.reader-controls-visible .reader-edge,
+.reference-reading-mode:hover .reader-toolbar,
+.reference-reading-mode:hover .reader-edge,
+.reference-reading-mode:focus-within .reader-toolbar,
+.reference-reading-mode:focus-within .reader-edge {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reference-reading-mode .reader-toolbar,
+  .reference-reading-mode .reader-edge {
+    transition: none;
+  }
+}

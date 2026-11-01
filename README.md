@@ -1,5 +1,7 @@
 # shakyo — コード写経支援ツール
 
+v2.3.7では開発用依存関係（Vite・Vitest・undici など）をセキュリティ修正版に更新しました。
+
 プログラミングコードの**写経**(お手本のコードをタイピングで書き写す学習法)を支援するWebアプリです。
 
 お手本(ローカルファイル・PDF・Webページ・組み込みサンプル)を左に表示し、右のエディタで書き写す。入力はリアルタイムに正誤判定され、写経したコードはAIによる「意味解説」で理解を深められます。
@@ -8,11 +10,11 @@
 
 ### お手本ビューア(左ペイン)
 - ローカルのテキスト/コードファイルをシンタックスハイライト付きで表示
-- PDFファイルの表示(pdf.js)。ページは可視範囲の近傍のみ遅延レンダリングされ、大きなPDFでも軽快
-- WebページのURL指定表示(iframe)。埋め込みを拒否するサイトは別ウィンドウで開く案内を表示
+- PDFファイルの表示(pdf.js)とEPUB 2/3の閲覧。拡大縮小、ページ送り、EPUBの目次移動とリーディングモードに対応
+- WebページのURL指定表示。デスクトップ版はお手本ペイン内のネイティブWebviewで表示するため、iframe拒否サイトも参照可能。ブラウザ版はiframeと別ウィンドウの案内を使用
 - **検索履歴とブックマーク**: 表示したWebページは履歴に自動記録(最大20件、個別/全削除可)。よく使うページはブックマークに追加/編集/削除でき、ワンクリックで再表示
 - **貼り付けタブ**: テキストを直接貼り付けて「お手本にセット」するだけで写経を開始。確定後は読み取り専用のハイライト表示になり、リロード後も復元されます
-- **組み込みサンプルコード集**: FizzBuzz(TypeScript)・フィボナッチ(JavaScript)・二分探索(Python)・クイックソート(Go)・構造体とメソッド(Rust)・文字列反転(C) の6件。お手本を持っていなくてもすぐ写経を始められます
+- **組み込みサンプルコード集**: FizzBuzz(TypeScript)・フィボナッチ(JavaScript)・二分探索(Python)・クイックソート(Go)・構造体とメソッド(Rust)・文字列反転(C)と、SQLの6題（SELECT、WHERE／ORDER BY、GROUP BY／HAVING、JOIN、サブクエリ、CTE）の計12件。SQLは写経用で、実行機能はありません
 
 ### 写経エディタ(右ペイン)
 - CodeMirror 6ベース。言語選択でハイライト、入力内容はブラウザ(localStorage)に自動保存
@@ -27,11 +29,14 @@
 - **追加で質問する**: 解説パネル下部の入力欄から、直前の解説の文脈を保ったまま追加質問できます(回答もストリーミング表示、コピーはQ&A込み)
 
 ### UI
-- 分割ビューは左右(お手本/エディタ)・上下(エディタ/解説)ともドラッグでリサイズでき、比率は保存されます
-- **ダークモード**: ライト/ダーク/システム(OS設定に追従)をヘッダーのボタンで切替
+- **自由なペイン配置**: お手本・写経エディタ・解説を、3画面6パターン、横2列、縦2段、エディタのみの1画面から選択。各枠の内容とサイズは保存されます
+- 境界はドラッグと矢印キーでリサイズできます。配置を変えてもエディタのUndo履歴、お手本の閲覧位置、生成中の解説を保持します
+- **ダークモード**: ライト/ダーク/システム(OS設定に追従)を左のテーマアイコンのメニューで切替
 - ダイアログはキーボード操作に対応(Tabフォーカス循環・Escapeで閉じる)。設定は複数タブ間で同期されます
 
 ## 起動方法
+
+Node.js 22.23.4を使用してください（`.nvmrc` / `.node-version`）。npmは22.23.4以上の22系、24.22.1以上の24系、26.12.1以上の26系だけを受け付けます。nvmを使う場合は`nvm install`、`nvm use`で切り替えられます。
 
 ```bash
 npm install
@@ -43,15 +48,21 @@ npm run dev
 ## APIキーの設定(解説機能を使う場合)
 
 1. [OpenAIのダッシュボード](https://platform.openai.com/api-keys)でAPIキーを取得
-2. アプリ右上の「設定」からAPIキーを入力(モデルは既定で `gpt-5.4-mini`、変更可能)
+2. 左の歯車アイコンの「設定」からAPIキーを入力(モデルは既定で `gpt-5.6-luna`、変更可能)
 3. キーは**ブラウザのlocalStorageにのみ保存**され、OpenAI API以外には送信されません
 
 解説機能を使わない場合、APIキーは不要です。
 
 ## ロードマップ
 
+### 拡張機能
+
+ヘッダーの「拡張機能」から `.shakyo-ext` パッケージを検査して導入できます。権限への同意、コマンド実行、専用設定、有効化・無効化・削除に対応しています。拡張はQuickJS WASMで隔離実行しますが、事前検査は安全性の保証ではありません。作成方法・サンプル・制約は [Extension API v1](docs/extensions.md) を参照してください。
+
+### 今後の予定
+
 - GitHub Pages への自動デプロイ
-- Web参照タブの内蔵webview化(iframe埋め込みを拒否するサイトの制約解消。Tauriの内蔵webviewでも別ウィンドウ表示に留まっており未解決)
+- 内蔵WebviewのWindows/macOSでの実機確認、Linuxを含む各レイアウト・DPI変更の追加確認（Linux/WSLgで基本操作は確認済み）
 
 ## 開発
 
@@ -67,6 +78,12 @@ Pull Request と main への push では GitHub Actions で lint / test / build 
 ## デスクトップアプリ(Tauri)
 
 Tauri v2により、Webアプリをそのままデスクトップアプリとしても配布できます。
+
+Webタブはメインウィンドウ内に子Webviewを配置し、ペインの移動・リサイズに追従します。設定・レイアウト・ブックマークなどのダイアログや境界ドラッグ中は一時的に隠し、タブを離れると閉じます。配置変更だけならページを再読込しません。作成失敗時には「再試行」と外部ブラウザへの導線を表示します。
+
+この機能はTauri 2.11.5の[unstableな子Webview API](https://docs.rs/tauri/2.11.5/tauri/window/struct.Window.html#method.add_child)を利用します。Linux/WSLgでは、iframeを拒否する固定テストページのペイン内表示、参照ページとエディタへの入力、設定の開閉に伴う非表示・復帰とページ内入力の保持、ウィンドウ縮小、タブ切替による終了・再表示を確認しました。Windows/macOS、全レイアウト、DPI変更は実機未確認です。
+
+サイト独自の認証・アクセス制限を解除するものではなく、ポップアップや新規ウィンドウは許可しません。必要なページは「外部ブラウザで開く」を利用してください。参照用Webviewは非永続セッションを使い、ローカルアプリのURLへの移動とアプリ操作権限を拒否します。
 
 **前提**: Rust stableツールチェーンが必要です。Linuxでは `libwebkit2gtk-4.1-dev` `libgtk-3-dev` などのシステムパッケージが別途必要になります。詳細は [Tauri公式のPrerequisitesページ](https://v2.tauri.app/start/prerequisites/) を参照してください。
 
@@ -84,8 +101,48 @@ npm run tauri build
 
 生成されたインストーラは `src-tauri/target/release/bundle/` 以下に出力されます。
 
-**リリース**: `app-v*` 形式のタグ(例 `app-v1.2.0`)をpushすると、GitHub Actionsのワークフロー(`.github/workflows/desktop.yml`)がWindows(.msi/.exe)・macOS(.dmg、arm64/x86_64)・Linux(.deb/.AppImage)のインストーラをビルドし、draft releaseに添付します。内容を確認してから公開してください。バージョンを上げる際は、アプリ表示バージョン(`tauri.conf.json` が参照)のもとになる `package.json` と、`src-tauri/Cargo.toml` の両方の `version` を更新してください。
+**GitHub Release**: mainのpush CIが成功したコミットに `vX.Y.Z` タグを付けると、[Release workflow](.github/workflows/release.yml) がWeb配布アーカイブ(.tar.gz)、Linux(.deb/.AppImage)、Windows x64(.msi)、macOSのApple Silicon・Intel両対応ユニバーサルDMG(.dmg)をビルドします。タグ・main・成功済みCIのコミットと各バージョンが一致し、Artifact AttestationとSHA-256検証が通った場合だけ公開します。CIが失敗または時間切れの場合や必須のDMGがない場合は公開しません。macOSアプリはDMG作成前にアドホック署名し、配布するDMGの整合性とアプリ識別子・バージョン、Apple Silicon・Intel両アーキテクチャの署名を検証します。失敗した場合は公開しません。AppleのDeveloper ID署名・公証はないため、Gatekeeperが警告または起動をブロックする場合があります。GitHub Releasesから入手したアプリを一度開いた後、「システム設定」→「プライバシーとセキュリティ」→「このまま開く」で許可してください。組織の管理設定などで許可できない場合があります。macOS実機でのアプリ起動・画面操作は未確認です。
 
-**注記**: 配布バイナリはコード署名を行っていません。そのため、macOSでは Gatekeeper の警告が表示されます(右クリック→「開く」を選ぶか、`xattr -dr com.apple.quarantine` で解除してください)。Windowsでは SmartScreen の警告が表示されます。
+**Windows Store**: GitHub Releaseで配布するMSIとは別に、予約済みの`shakyo`製品へWindows 11 x64用MSIXを手動提出します。[Store MSIX workflow](.github/workflows/store-msix.yml)をタグ指定で起動し、Actions artifactから提出用の未署名MSIXを取得します。Partner Centerの製品IDは`dendencat.shakyo`、Publisherは`CN=A56B1A7A-89BE-477F-BC7A-5CDF09C69BC8`、PublisherDisplayNameは`dendencat`です。Windows 11実機で起動・WebView2・APIキー保存を確認し、Windows App Certification Kitで検証してからPartner Centerへアップロードします。Store提出用MSIXはMicrosoftが審査後に署名するため、Windowsのコード署名証明書は取得しません。自己署名を使う場合は私的な実機試験に限り、秘密鍵をリポジトリや公開物に含めません。Store審査が終わるまでMSIXをGitHub Releaseから直接配布しません。
+
+PRではlint、Vitest、build、`cargo check --locked`、ChromiumのPlaywrightスモークテストと依存関係レビューを実行します。Playwright失敗時はスクリーンショット・trace・レポートをActions artifactに保存します。公開物のハッシュはReleaseの`SHA256SUMS.txt`で確認でき、`gh attestation verify <file> --repo dendencat/shakyo`で出所を検証できます。
+
+2026-09-23にmainのRuleset（ID `19080468`）へCI `web`・`rust`・`browser`・`dependency-review`の必須チェックとレビュー会話の解決条件を適用しました。変更案は`gh api repos/dendencat/shakyo/rulesets/19080468 | node scripts/prepare-main-ruleset.mjs`で再生成できます。リリースタグは、管理者だけが作成できるRuleset（ID `23853970`）と、作成後の更新・削除を禁止するRuleset（ID `23854004`）を適用済みです。設定の正典は[release-tag-creation.json](.github/rulesets/release-tag-creation.json)と[release-tags.json](.github/rulesets/release-tags.json)です。
 
 実装計画は [PLAN.md](PLAN.md)、開発規約とAIエージェント運用は [AGENTS.md](AGENTS.md) を参照してください。
+
+
+## v2.3.1 の閲覧改善
+
+- PDF/EPUBの倍率は50〜300%の整数を直接入力でき、Ctrl+ホイールまたは25%刻みのボタンでも変更できます。
+- リーディングモードではページ上下端からのホイール操作、円形の左右ボタン、PDF/EPUBの階層目次を利用できます。
+- HTTPSリンクを含むEPUBも開けます。画像・CSS等の外部リソースは自動取得せず、リンクは接続先を確認してから既定ブラウザで開きます。
+- 設定項目横のインフォアイコンにマウスを重ねるか、キーボードでフォーカスすると説明を確認できます。
+- Ctrl/Cmd+Hで開いた置換パネルがキーを放した時に消える問題を修正しました。
+
+## v2.3.0 の設定と操作
+
+歯車の設定画面は「表示」「エディタ」「Web参照」「OpenAI」に分かれています。「保存」で反映し、「キャンセル」で変更を破棄します。
+
+- **表示**: お手本・解説を設定または各ペインの閉じるボタンで非表示にできます。写経エディタは常に表示します。設定から再表示すると内容や編集履歴を引き継ぎます。リーディングモードではPDF/EPUBの操作UIをホバー・クリック時だけ表示します。コード文字サイズは縮小・拡大・リセットで10〜32pxに変更でき、初期値は14pxです。
+- **エディタ**: スペース／タブ、幅2・4・8、自動インデントを選べます。初期値はスペース2・自動インデント有効で、変更後の入力に適用されます。入力済みコードの自動変換は行いません。操作モードはノーマル（初期値）・Vim・Emacs・VSCodeから選べます。主要なキー操作は左の「ショートカット」で確認できます。
+- **Web参照**: URL欄の横のフォルダアイコンはブックマーク、反時計回りの矢印アイコンは履歴を開きます。URL欄を選ぶと過去の履歴候補が開き、入力で絞り込み、矢印キー・Enterで選択、Escapeで閉じられます。設定で候補を無効にしても履歴の記録・一覧は利用できます。
+- **ヘルプ**: 各項目を見出しから開閉できます。「更新履歴」を開くと、v1.0.0からのバージョンを個別に選べます。
+
+お手本はファイルタブの「参照…」またはファイルのドロップで開けます。インデント幅は写経エディタの言語選択横でも変更できます。設定の保存成功時には通知が表示されます。
+
+「ショートカット」アイコンまたは Ctrl / Cmd + / でキー割り当てモーダルを開きます。各入力欄で組合せを押して保存してください。初期値は、全削除が Alt + Shift + D、上書き保存が Ctrl / Cmd + S、名前を付けて保存が Ctrl / Cmd + Shift + S、ファイルを開くが Ctrl / Cmd + O、AI解説が Ctrl / Cmd + Alt + Iです。コメント切り替えは Ctrl / Cmd + Shift + / です。Vim・Emacsでは変更した割り当てのみ優先されます。
+
+モデルは設定のドロップダウンから選択します。通常はGPT-5.6 Luna/Terraを使用でき、詳細設定で高性能モデルを有効にするとSol/Astraも選べます。高性能モデルは高額になる可能性があるため、画面の警告を確認してください。送信するコード・会話、保存方針、モデル変更による料金リスクは[OpenAI APIの送信情報と料金](docs/api-privacy.md)を確認してください。Tauri版では履歴候補の表示中に子Webviewを一時的に隠しますが、ページ領域の位置とサイズは変えません。
+
+## 画面と起動
+
+左端のアイコンからファイル・拡張機能・レイアウト・テーマ・設定・ヘルプのサイドバーを開閉します。同じアイコンで閉じ、別のアイコンで切り替えます。設定は歯車、ヘルプは「?」、ライトテーマは太陽、ダークテーマは月です。
+
+デスクトップ配布版はインストール後に単体起動できます。Node.jsやバックエンドサーバーを別途起動する必要はありません。フロントエンドは同梱され、Tauriのローカル処理が内蔵ブラウザを制御します。`npm run dev` / `npm run tauri dev` のViteサーバーは開発用です。
+
+内蔵ブラウザには戻る・進む・更新・現在のURL表示があります。ページ内リンクやリダイレクト後もURLを反映します。Web版のiframeでは他サイトの遷移先を取得できないため、アプリから開いたURLを対象にします。
+
+ローカルファイル・写経・保存・バージョン表示・同梱ヘルプはオフラインで利用できます。AI解説、Webページ、オンラインWiki、ネット通信する拡張には接続が必要です。
+
+拡張の導入は [Wiki](https://github.com/dendencat/shakyo/wiki/Extensions) または [同梱元の手順](docs/extensions.md) を参照してください。

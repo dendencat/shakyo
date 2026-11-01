@@ -1,0 +1,64 @@
+.reference-pane .reference-code .cm-editor,
+.reference-pane .paste-input {
+  font-size: var(--reference-font-size, 14px);
+}
+
+.web-url-field {
+  position: relative;
+  flex: 1 1 120px;
+  min-width: 100px;
+}
+
+.browser-toolbar .web-url-field .url-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.web-list.web-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: min(180px, 35vh);
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 12px #0003;
+}
+
+.web-suggestions .web-item-link,
+.web-history-link {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.web-suggestions .web-item-link svg,
+.web-history-link svg {
+  flex-shrink: 0;
+}
+
+.web-suggestions .web-item-link span,
+.web-history-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.web-suggestions [aria-selected="true"] {
+  background: var(--accent-bg);
+  outline: 1px solid var(--accent-border);
+  outline-offset: -1px;
+}
+
+.reference-pane .web-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.reference-pane > .pane-header > .icon-button {
+  margin-left: auto;
+}
