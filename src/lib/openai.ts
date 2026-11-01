@@ -1,4 +1,5 @@
 import { DEFAULT_REASONING_EFFORT, type ReasoningEffort } from './settings'
+import { isTauri } from './openExternal'
 
 const ENDPOINT = 'https://api.openai.com/v1/chat/completions'
 
@@ -43,6 +44,10 @@ export async function* streamChat(options: {
   idleTimeoutMs?: number
   reasoningEffort?: ReasoningEffort
 }): AsyncGenerator<string> {
+  if (isTauri()) {
+    yield* streamDesktopChat(options)
+    return
+  }
   const {
     apiKey,
     model,
@@ -171,6 +176,45 @@ export async function* streamChat(options: {
     clearTimeout(connectTimer)
     clearTimeout(idleTimer)
     cleanupSignal()
+  }
+}
+
+async function* streamDesktopChat(options: {
+  model: string
+  messages: ChatMessage[]
+  signal?: AbortSignal
+  reasoningEffort?: ReasoningEffort
+}): AsyncGenerator<string> {
+  const { Channel, invoke } = await import('@tauri-apps/api/core')
+  type Event = { kind: 'delta' | 'done' | 'error'; text?: string }
+  const id = crypto.randomUUID()
+  const channel = new Channel<Event>()
+  const pending: Event[] = []
+  let wake: (() => void) | undefined
+  channel.onmessage = event => { pending.push(event); wake?.(); wake = undefined }
+  const onAbort = () => { void invoke('cancel_openai_stream', { id }).catch(() => {}) ; wake?.() }
+  options.signal?.addEventListener('abort', onAbort, { once: true })
+  const operation = invoke('stream_openai_chat', {
+    id, model: options.model, messages: options.messages,
+    reasoningEffort: options.reasoningEffort ?? DEFAULT_REASONING_EFFORT,
+    onEvent: channel,
+  }).then(() => { pending.push({ kind: 'done' }); wake?.() }, () => {
+    pending.push({ kind: 'error', text: '解説の取得に失敗しました。' }); wake?.()
+  })
+  try {
+    while (true) {
+      if (options.signal?.aborted) return
+      if (!pending.length) await new Promise<void>(resolve => { wake = resolve })
+      const event = pending.shift()
+      if (!event) continue
+      if (event.kind === 'delta' && event.text) yield event.text
+      if (event.kind === 'error') throw new Error(event.text || '解説の取得に失敗しました。')
+      if (event.kind === 'done') return
+    }
+  } finally {
+    options.signal?.removeEventListener('abort', onAbort)
+    void invoke('cancel_openai_stream', { id }).catch(() => {})
+    void operation
   }
 }
 

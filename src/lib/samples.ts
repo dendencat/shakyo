@@ -9,6 +9,86 @@ export interface CodeSample {
 
 export const CODE_SAMPLES: CodeSample[] = [
   {
+    id: 'select-sql',
+    title: '基本SELECT (SQL)',
+    lang: 'sql',
+    code: `-- 目的: 商品一覧から必要な列を取り出す。
+-- products: id（商品ID）、name（商品名）、price（価格）
+SELECT id, name, price
+FROM products;
+`,
+  },
+  {
+    id: 'where-order-sql',
+    title: 'WHEREとORDER BY (SQL)',
+    lang: 'sql',
+    code: `-- 目的: 価格が1000円以上の商品を安い順に並べる。
+-- products: id（商品ID）、name（商品名）、price（価格）
+SELECT name, price
+FROM products
+WHERE price >= 1000
+ORDER BY price ASC, id ASC;
+`,
+  },
+  {
+    id: 'group-having-sql',
+    title: 'GROUP BYとHAVING (SQL)',
+    lang: 'sql',
+    code: `-- 目的: 注文が3件以上ある顧客の注文数と合計金額を求める。
+-- orders: id（注文ID）、customer_id（顧客ID）、total（注文金額）
+SELECT customer_id, COUNT(*) AS order_count, SUM(total) AS total_amount
+FROM orders
+GROUP BY customer_id
+HAVING COUNT(*) >= 3
+ORDER BY total_amount DESC, customer_id ASC;
+`,
+  },
+  {
+    id: 'join-sql',
+    title: 'JOINによる結合 (SQL)',
+    lang: 'sql',
+    code: `-- 目的: 注文と顧客を結合し、注文した顧客の名前を表示する。
+-- customers: id（顧客ID）、name（顧客名）
+-- orders: id（注文ID）、customer_id（顧客ID）、total（注文金額）
+SELECT o.id, c.name, o.total
+FROM orders AS o
+INNER JOIN customers AS c ON o.customer_id = c.id
+ORDER BY o.id;
+`,
+  },
+  {
+    id: 'subquery-sql',
+    title: 'サブクエリ (SQL)',
+    lang: 'sql',
+    code: `-- 目的: 平均価格より高い商品をサブクエリで抽出する。
+-- products: id（商品ID）、name（商品名）、price（価格）
+SELECT name, price
+FROM products
+WHERE price > (
+  SELECT AVG(price)
+  FROM products
+)
+ORDER BY price DESC, id ASC;
+`,
+  },
+  {
+    id: 'cte-sql',
+    title: 'CTEによる共通テーブル式 (SQL)',
+    lang: 'sql',
+    code: `-- 目的: 顧客ごとの注文集計に名前を付け、合計1万円以上を抽出する。
+-- orders: id（注文ID）、customer_id（顧客ID）、total（注文金額）
+WITH customer_totals AS (
+  SELECT customer_id, SUM(total) AS total_amount
+  FROM orders
+  GROUP BY customer_id
+)
+SELECT customer_id, total_amount
+FROM customer_totals
+WHERE total_amount >= 10000
+ORDER BY total_amount DESC, customer_id ASC;
+`,
+  },
+  {
     id: 'fizzbuzz-ts',
     title: 'FizzBuzz (TypeScript)',
     lang: 'ts',

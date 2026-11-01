@@ -1,12 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { Icon, IconButton } from './Icon'
+import { emptyNavigation, visit, step, normalizeBrowserUrl } from '../lib/browserNavigation'
+import { nativeBrowserAction } from '../lib/nativeReference'
+import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
+import type { Ref } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { PdfViewer } from './PdfViewer'
+import { EpubViewer } from './EpubViewer'
+import { PaneTitle } from './PaneTitle'
 import { LANGUAGE_OPTIONS, languageExtension, langIdFromFilename } from '../lib/langs'
 import type { LangId } from '../lib/langs'
 import { CODE_SAMPLES } from '../lib/samples'
 import { loadPasteReference, savePasteReference } from '../lib/pasteReference'
 import type { PasteReference } from '../lib/pasteReference'
-import { readTextReferenceFile } from '../lib/referenceFile'
+import { readReferenceFile, REFERENCE_FILE_ACCEPT } from '../lib/referenceFile'
 import {
   addWebBookmark,
   addWebHistory,
@@ -19,11 +26,21 @@ import {
 } from '../lib/webReference'
 import type { WebBookmark } from '../lib/webReference'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { openExternal } from '../lib/openExternal'
+import { isTauri, openExternal } from '../lib/openExternal'
+import { NativeWebReference } from './NativeWebReference'
+import type { ReferencePort } from '../extensions/referenceAdapter'
+import { usePreferences } from '../lib/preferences'
+import './WebReference.css'
+import './ReferenceReader.css'
 
 type ReferenceContent =
-  | { kind: 'text'; name: string; text: string; lang: LangId | null }
+  | { kind: 'text'; name: string; text: string; lang: LangId | null; fromExtension?: boolean }
   | { kind: 'pdf'; name: string; data: ArrayBuffer }
+  | { kind: 'epub'; name: string; data: ArrayBuffer }
+
+export type ReferencePaneCommands = {
+  openFilePicker: () => void
+}
 
 type Tab = 'file' | 'paste' | 'web'
 
@@ -81,23 +98,78 @@ function BookmarkModal({
 export function ReferencePane({
   onReferenceChange,
   resolvedTheme,
+  obscured = false,
+  sidebarTarget,
+  extensionPort,
+  onExtensionChange,
+  onClose,
+  commandsRef,
+  onEnsureVisible,
 }: {
-  onReferenceChange?: (ref: { name: string; text: string } | null) => void
+  onReferenceChange?: (ref: { name: string; text: string; fromExtension?: boolean } | null) => void
   resolvedTheme: 'light' | 'dark'
+  sidebarTarget?: HTMLElement | null
+  obscured?: boolean
+  extensionPort?: React.RefObject<ReferencePort | null>
+  onExtensionChange?: () => void
+  onClose?: () => void
+  commandsRef?: Ref<ReferencePaneCommands>
+  onEnsureVisible?: () => void
 }) {
+  const preferences = usePreferences()
   const [tab, setTab] = useState<Tab>('file')
   const [content, setContent] = useState<ReferenceContent | null>(null)
   const [webUrl, setWebUrl] = useState('')
   const [loadedUrl, setLoadedUrl] = useState('')
+  const [currentUrl, setCurrentUrl] = useState('')
+  const [navigation, setNavigation] = useState(emptyNavigation)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [navigationBusy, setNavigationBusy] = useState(false)
+  const native = isTauri()
+  const recordLocation = (url: string) => {
+    if (currentUrl === url) return
+    setCurrentUrl(url)
+    setWebUrl(url)
+    setWebHistory(addWebHistory(url))
+  }
+  const navigate = async (action: 'back' | 'forward' | 'reload') => {
+    setWebError(null)
+    setNavigationBusy(true)
+    try {
+      if (native) await nativeBrowserAction(action)
+      else if (action === 'reload') setReloadKey(key => key + 1)
+      else {
+        const next = step(navigation, action === 'back' ? -1 : 1)
+        setNavigation(next)
+        const url = next.entries[next.index]
+        if (url) { setLoadedUrl(url); setCurrentUrl(url); setWebUrl(url) }
+      }
+    } catch { setWebError('ページを操作できませんでした。再試行してください。') }
+    finally { setNavigationBusy(false) }
+  }
   const [webHistory, setWebHistory] = useState(() => loadWebHistory())
   const [webBookmarks, setWebBookmarks] = useState(() => loadWebBookmarks())
-  const [bookmarksOpen, setBookmarksOpen] = useState(true)
-  const [historyOpen, setHistoryOpen] = useState(true)
+  const [webPanel, setWebPanel] = useState<'bookmarks' | 'history' | 'suggestions' | null>(null)
+  const [historyQuery, setHistoryQuery] = useState('')
+  const [activeSuggestion, setActiveSuggestion] = useState(-1)
+  const suggestionsOpen = webPanel === 'suggestions' && preferences.showHistorySuggestions
+  const suggestions = webHistory.filter(entry => entry.url.toLowerCase().includes(historyQuery.toLowerCase()))
+  const bookmarksOpen = webPanel === 'bookmarks'
+  const historyOpen = webPanel === 'history'
+  const showSuggestions = () => {
+    if (!preferences.showHistorySuggestions) return
+    setHistoryQuery('')
+    setActiveSuggestion(-1)
+    setWebPanel('suggestions')
+  }
   const [webError, setWebError] = useState<string | null>(null)
   const [bookmarkModal, setBookmarkModal] = useState<BookmarkModalState | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [sampleSelectValue, setSampleSelectValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileRequestRef = useRef(0)
+  const [readingControlsVisible, setReadingControlsVisible] = useState(true)
+  const readingControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialPasteRef = useRef<PasteReference | null | undefined>(undefined)
   if (initialPasteRef.current === undefined) {
     initialPasteRef.current = loadPasteReference()
@@ -107,11 +179,34 @@ export function ReferencePane({
   const [pasteLang, setPasteLang] = useState<LangId>(() => initialPasteRef.current?.lang ?? 'ts')
   const [pasteEditing, setPasteEditing] = useState(() => initialPasteRef.current == null)
   const [pasteError, setPasteError] = useState<string | null>(null)
+  const readingActive = preferences.readingMode && tab === 'file' && (content?.kind === 'pdf' || content?.kind === 'epub')
+
+  const openFilePicker = useCallback(() => {
+    onEnsureVisible?.()
+    fileInputRef.current?.click()
+  }, [onEnsureVisible])
+  useImperativeHandle(commandsRef, () => ({ openFilePicker }), [openFilePicker])
+
+  const showReadingControls = useCallback(() => {
+    if (!readingActive) return
+    setReadingControlsVisible(true)
+    if (readingControlsTimerRef.current) clearTimeout(readingControlsTimerRef.current)
+    readingControlsTimerRef.current = setTimeout(() => setReadingControlsVisible(false), 2_000)
+  }, [readingActive])
+
+  useEffect(() => {
+    if (readingActive) showReadingControls()
+    else setReadingControlsVisible(true)
+    return () => {
+      if (readingControlsTimerRef.current) clearTimeout(readingControlsTimerRef.current)
+      readingControlsTimerRef.current = null
+    }
+  }, [readingActive, showReadingControls])
 
   useEffect(() => {
     onReferenceChange?.(
       tab === 'file' && content?.kind === 'text'
-        ? { name: content.name, text: content.text }
+        ? { name: content.name, text: content.text, ...(content.fromExtension ? { fromExtension: true } : {}) }
         : tab === 'paste' && !pasteEditing && pasteRef != null
           ? { name: '貼り付けテキスト', text: pasteRef.text }
         : null,
@@ -119,33 +214,70 @@ export function ReferencePane({
   }, [tab, content, pasteEditing, pasteRef, onReferenceChange])
 
   const openFile = async (file: File) => {
+    const request = ++fileRequestRef.current
     setFileError(null)
     try {
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        setContent({ kind: 'pdf', name: file.name, data: await file.arrayBuffer() })
-      } else {
+      const loaded = await readReferenceFile(file)
+      if (request !== fileRequestRef.current) return
+      if (loaded.kind === 'text') {
         setContent({
           kind: 'text',
           name: file.name,
-          text: await readTextReferenceFile(file),
+          text: loaded.text,
           lang: langIdFromFilename(file.name),
         })
-      }
+      } else setContent({ ...loaded, name: file.name })
     } catch (e) {
+      if (request !== fileRequestRef.current) return
       setFileError(`ファイルの読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
-  const loadWeb = (inputUrl = webUrl) => {
-    const trimmedUrl = inputUrl.trim()
-    if (!trimmedUrl) return
-    const url = /^https?:\/\//.test(trimmedUrl) ? trimmedUrl : `https://${trimmedUrl}`
-    setLoadedUrl(url)
-    setWebUrl(url)
-    setWebHistory(addWebHistory(url))
-    setBookmarksOpen(false)
-    setHistoryOpen(false)
+  const closeFile = () => {
+    fileRequestRef.current++
+    setContent(null)
+    setFileError(null)
   }
+
+  const loadWeb = (inputUrl = webUrl) => {
+    if (!inputUrl.trim()) return
+    try {
+      const url = normalizeBrowserUrl(inputUrl)
+      setWebError(null)
+      setWebPanel(null)
+      if (url === loadedUrl && url === currentUrl) { void navigate('reload'); return }
+      if (native && url === loadedUrl && url !== currentUrl) {
+        void nativeBrowserAction('navigate', url).catch(() => setWebError('ページを開けませんでした。'))
+      }
+      setLoadedUrl(url)
+      setCurrentUrl(url)
+      setWebUrl(url)
+      setNavigation(history => visit(history, url))
+      setWebHistory(addWebHistory(url))
+    } catch { setWebError('HTTP(S)の正しいURLを入力してください。') }
+  }
+
+  useLayoutEffect(() => {
+    if (!extensionPort) return
+    extensionPort.current = {
+      getCurrent: () => {
+        if (tab === 'web') return currentUrl ? { kind: 'web', url: currentUrl } : null
+        if (tab === 'paste') return pasteRef && !pasteEditing ? { kind: 'text', name: '貼り付けテキスト', text: pasteRef.text, language: pasteRef.lang } : null
+        if (content?.kind === 'pdf') return { kind: 'pdf', name: content.name }
+        if (content?.kind === 'epub') return null
+        return content ? { kind: 'text', name: content.name, text: content.text, language: content.lang } : null
+      },
+      openText: input => {
+        const lang = LANGUAGE_OPTIONS.some(o => o.id === input.language) ? input.language as LangId : null
+        setContent({ kind: 'text', name: input.name, text: input.text, lang, fromExtension: true })
+        setFileError(null)
+        setTab('file')
+      },
+      openUrl: url => { loadWeb(url); setTab('web') },
+    }
+    return () => { extensionPort.current = null }
+  })
+  useEffect(() => { onExtensionChange?.() }, [tab, content, currentUrl, pasteRef, pasteEditing, onExtensionChange])
 
   const closeBookmarkModal = () => {
     setBookmarkModal(null)
@@ -194,6 +326,7 @@ export function ReferencePane({
     setFileError(null)
     setContent({ kind: 'text', name: sample.title, text: sample.code, lang: sample.lang })
     setSampleSelectValue('')
+    setTab('file')
   }
 
   const savePaste = (nextRef: PasteReference) => {
@@ -221,10 +354,43 @@ export function ReferencePane({
     savePaste(nextRef)
   }
 
+  const fileControls = (
+    <div className="file-controls">
+          <div className="toolbar">
+            <button className="primary" onClick={openFilePicker}>
+              {sidebarTarget ? 'ファイルを開く…' : '参照…'}
+            </button>
+            <select value={sampleSelectValue} onChange={(e) => selectSample(e.target.value)}>
+              <option value="">サンプルから選ぶ…</option>
+              {CODE_SAMPLES.map((sample) => (
+                <option key={sample.id} value={sample.id}>
+                  {sample.title}
+                </option>
+              ))}
+            </select>
+            {content && <><span className="file-name" title={content.name}>{content.name}</span>
+              <IconButton icon="close" label="ファイルを閉じる" onClick={closeFile} /></>}
+          </div>
+    </div>
+  )
+
   return (
-    <section className="pane reference-pane">
+    <section
+      className={`pane reference-pane${readingActive ? ' reference-reading-mode' : ''}${readingControlsVisible ? ' reader-controls-visible' : ''}`}
+      style={{ '--reference-font-size': `${preferences.fontSize}px` } as React.CSSProperties}
+      onPointerMove={showReadingControls}
+      onClick={showReadingControls}
+      onFocusCapture={showReadingControls}
+    >
+      <input ref={fileInputRef} type="file" hidden aria-label="お手本ファイル" accept={REFERENCE_FILE_ACCEPT}
+        onChange={e => {
+          const file = e.target.files?.[0]
+          if (file) { setTab('file'); void openFile(file) }
+          e.target.value = ''
+        }} />
+      {sidebarTarget && createPortal(fileControls, sidebarTarget)}
       <div className="pane-header">
-        <h2>お手本</h2>
+        <PaneTitle icon="reference" label="お手本" />
         <div className="tab-bar" role="tablist">
           <button role="tab" aria-selected={tab === 'file'} className={tab === 'file' ? 'active' : ''} onClick={() => setTab('file')}>
             ファイル
@@ -236,39 +402,33 @@ export function ReferencePane({
             Webページ
           </button>
         </div>
+        {onClose && <IconButton icon="close" label="お手本を閉じる" onClick={onClose} />}
       </div>
 
       {tab === 'file' && (
-        <div className="pane-body">
-          <div className="toolbar">
-            <button className="primary" onClick={() => fileInputRef.current?.click()}>
-              ファイルを開く…
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) void openFile(f)
-                e.target.value = ''
-              }}
-            />
-            <select value={sampleSelectValue} onChange={(e) => selectSample(e.target.value)}>
-              <option value="">サンプルから選ぶ…</option>
-              {CODE_SAMPLES.map((sample) => (
-                <option key={sample.id} value={sample.id}>
-                  {sample.title}
-                </option>
-              ))}
-            </select>
-            {content && <span className="file-name" title={content.name}>{content.name}</span>}
-          </div>
-          {fileError && <p className="error-text">{fileError}</p>}
+        <div className="pane-body reference-file-drop"
+          onDragOver={e => {
+            if (!Array.from(e.dataTransfer.types).includes('Files')) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
+          }}
+          onDrop={e => {
+            const file = e.dataTransfer.files?.[0]
+            if (!file) return
+            e.preventDefault()
+            void openFile(file)
+          }}>
+          {!sidebarTarget && fileControls}
+          {sidebarTarget && <div className="toolbar">
+            <button className="primary" onClick={openFilePicker}>参照…</button>
+            {content && <><span className="file-name" title={content.name}>{content.name}</span>
+              <IconButton icon="close" label="ファイルを閉じる" onClick={closeFile} /></>}
+          </div>}
+          {fileError && <p className="error-text" role="alert">{fileError}</p>}
           <div className="reference-content">
             {!content && !fileError && (
               <p className="placeholder">
-                お手本にするコードファイル・テキスト・PDFを開いてください。
+                コードファイル・テキスト・PDF・EPUBをここにドラッグ＆ドロップするか、「参照…」で開いてください。
               </p>
             )}
             {content?.kind === 'text' && (
@@ -282,7 +442,8 @@ export function ReferencePane({
                 className="reference-code"
               />
             )}
-            {content?.kind === 'pdf' && <PdfViewer data={content.data} />}
+            {content?.kind === 'pdf' && <PdfViewer data={content.data} readingMode={preferences.readingMode} />}
+            {content?.kind === 'epub' && <EpubViewer data={content.data} readingMode={preferences.readingMode} />}
           </div>
         </div>
       )}
@@ -345,33 +506,71 @@ export function ReferencePane({
 
       {tab === 'web' && (
         <div className="pane-body">
-          <div className="toolbar">
+          <div className="toolbar browser-toolbar">
+            <IconButton icon="back" label="戻る" disabled={!loadedUrl || navigationBusy || (!native && navigation.index <= 0)} onClick={() => void navigate('back')} />
+            <IconButton icon="forward" label="進む" disabled={!loadedUrl || navigationBusy || (!native && navigation.index >= navigation.entries.length - 1)} onClick={() => void navigate('forward')} />
+            <IconButton icon="reload" label="ページを更新" disabled={!loadedUrl || navigationBusy} onClick={() => void navigate('reload')} />
+            <div className="web-url-field">
             <input
+              aria-label={native ? "現在のURL" : "URL（アプリから開いたページ）"}
               type="url"
               className="url-input"
               placeholder="https://example.com/article"
               value={webUrl}
-              onChange={(e) => setWebUrl(e.target.value)}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={suggestionsOpen}
+              aria-controls={suggestionsOpen ? 'web-history-suggestions' : undefined}
+              aria-activedescendant={suggestionsOpen && activeSuggestion >= 0 ? `web-history-option-${activeSuggestion}` : undefined}
+              autoComplete="off"
+              onFocus={showSuggestions}
+              onClick={() => { if (!suggestionsOpen) showSuggestions() }}
+              onBlur={() => { if (webPanel === 'suggestions') setWebPanel(null) }}
+              onChange={(e) => {
+                setWebUrl(e.target.value)
+                setHistoryQuery(e.target.value)
+                setActiveSuggestion(-1)
+                setWebPanel(preferences.showHistorySuggestions ? 'suggestions' : null)
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') loadWeb()
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                if (e.key === 'Escape' && suggestionsOpen) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setWebPanel(null)
+                } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && preferences.showHistorySuggestions) {
+                  e.preventDefault()
+                  setWebPanel('suggestions')
+                  setActiveSuggestion(index => suggestions.length === 0 ? -1 :
+                    e.key === 'ArrowDown' ? (index + 1) % suggestions.length : (index <= 0 ? suggestions.length - 1 : index - 1))
+                } else if (e.key === 'Enter') {
+                  e.preventDefault()
+                  loadWeb(suggestionsOpen && activeSuggestion >= 0 ? suggestions[activeSuggestion]?.url ?? webUrl : webUrl)
+                }
               }}
             />
-            <button className="primary" onClick={() => loadWeb()}>
-              表示
-            </button>
-            <button
+          {suggestionsOpen && (
+            <div id="web-history-suggestions" className="web-list web-suggestions" role="listbox" aria-label="URLの履歴候補">
+              {suggestions.length === 0 && <p className="placeholder">該当する履歴はありません。</p>}
+              {suggestions.map((entry, index) => (
+                <button key={entry.url} id={`web-history-option-${index}`} role="option" aria-selected={index === activeSuggestion}
+                  className="web-item-link" tabIndex={-1} title={entry.url}
+                  ref={element => { if (index === activeSuggestion) element?.scrollIntoView?.({ block: 'nearest' }) }}
+                  onMouseDown={e => e.preventDefault()} onClick={() => loadWeb(entry.url)}><Icon name="history" /><span>{entry.url}</span></button>
+              ))}
+            </div>
+          )}
+            </div>
+            <IconButton icon="go" label="URLを開く" onClick={() => loadWeb()} />
+            <IconButton icon="folder" label="ブックマーク" aria-expanded={bookmarksOpen} aria-controls="web-bookmarks" onClick={() => setWebPanel(bookmarksOpen ? null : 'bookmarks')} />
+            <IconButton icon="history" label="履歴" aria-expanded={historyOpen} aria-controls="web-history" onClick={() => setWebPanel(historyOpen ? null : 'history')} />
+            <IconButton icon="bookmark" label="ブックマークに追加"
               disabled={!loadedUrl}
-              aria-label="ブックマークに追加"
-              onClick={() => openBookmarkModal({ mode: 'add', name: loadedUrl, url: loadedUrl })}
-            >
-              ☆
-            </button>
+              onClick={() => openBookmarkModal({ mode: 'add', name: currentUrl, url: currentUrl })}
+            />
           </div>
-          <section className="web-section">
-            <button className="web-section-toggle" aria-expanded={bookmarksOpen} onClick={() => setBookmarksOpen((open) => !open)}>
-              ブックマーク {bookmarksOpen ? '▼' : '▶'}
-            </button>
-            {bookmarksOpen && (
+          {bookmarksOpen && (
+          <section id="web-bookmarks" className="web-section" aria-label="ブックマーク一覧">
               <div className="web-list">
                 {webBookmarks.length === 0 && <p className="placeholder">ブックマークはありません。</p>}
                 {webBookmarks.map((bookmark) => (
@@ -384,43 +583,50 @@ export function ReferencePane({
                   </div>
                 ))}
               </div>
-            )}
           </section>
-          <section className="web-section">
+          )}
+          {historyOpen && (
+          <section id="web-history" className="web-section" aria-label="履歴一覧">
             <div className="web-section-header">
-              <button className="web-section-toggle" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
-                履歴 {historyOpen ? '▼' : '▶'}
-              </button>
+              <span>履歴</span>
               {webHistory.length > 0 && <button onClick={clearHistory}>全削除</button>}
             </div>
-            {historyOpen && (
               <div className="web-list">
                 {webHistory.length === 0 && <p className="placeholder">履歴はありません。</p>}
                 {webHistory.map((entry) => (
                   <div className="web-row" key={entry.url}>
-                    <button className="web-item-link" title={entry.url} onClick={() => loadWeb(entry.url)}>{entry.url}</button>
+                    <button className="web-item-link web-history-link" title={entry.url} onClick={() => loadWeb(entry.url)}><Icon name="history" /><span>{entry.url}</span></button>
                     <button aria-label="この履歴を削除" onClick={() => setWebHistory(removeWebHistory(entry.url))}>×</button>
                   </div>
                 ))}
               </div>
-            )}
           </section>
+          )}
           {!bookmarkModal && webError && <p className="error-text">{webError}</p>}
-          {loadedUrl ? (
+          {loadedUrl && isTauri() ? (
+            <>
+              <p className="hint">
+                表示できないページや別画面で開くリンクは、
+                <button className="link" onClick={() => { void openExternal(currentUrl).catch(() => setWebError('外部ブラウザを開けませんでした。')) }}>外部ブラウザで開く</button>
+                をご利用ください。
+              </p>
+              <NativeWebReference url={loadedUrl} obscured={obscured || !!bookmarkModal || bookmarksOpen || historyOpen || suggestionsOpen} onLocation={recordLocation} />
+            </>
+          ) : loadedUrl ? (
             <>
               {/*
                 X-Frame-Options/CSPによる埋め込みブロックはJSから確実に検知できないため、
                 読み込み成否によらずヒントを常時表示する。
               */}
               <p className="hint">
-                ページが表示されない場合、そのサイトは埋め込み(iframe)を拒否しています。
-                <button className="link" onClick={() => { void openExternal(loadedUrl) }}>
+                Web版のURL・戻る・進むはアプリから開いたページが対象です。表示されないサイトは
+                <button className="link" onClick={() => { void openExternal(currentUrl) }}>
                   別ウィンドウで開く
                 </button>
                 で開き、画面を左右に並べてご利用ください。
               </p>
               {/* sandbox="allow-scripts allow-same-origin" は同時指定するとsandboxが実質無効化されるため付与しない */}
-              <iframe className="web-frame" src={loadedUrl} title="お手本ページ" />
+              <iframe key={reloadKey} className="web-frame" src={loadedUrl} title="お手本ページ" />
             </>
           ) : (
             <p className="placeholder">お手本にするWebページのURLを入力してください。</p>

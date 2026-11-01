@@ -23,7 +23,7 @@ describe('openExternal', () => {
   it('Web環境では window.open で開く', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
     await openExternal('https://example.com/')
-    expect(openSpy).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener')
+    expect(openSpy).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer')
   })
 
   it('Tauri環境では openUrl で開き window.open は呼ばれない', async () => {
